@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}创建收集任务 - FileCollect{% endblock %}
+
+{% block head %}
+<style>
+    .file-type-cb { display: none; }
+    .file-type-label { opacity: 0.5; }
+    .file-type-cb:checked + .text-lg { transform: scale(1.2); }
+    .file-type-cb:checked ~ div .text-sm { color: #a78bfa; }
+    .file-type-label:has(.file-type-cb:checked) {
+        opacity: 1;
+        background: rgba(124,58,237,0.12) !important;
+        border-color: rgba(124,58,237,0.3);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="flex items-center gap-3 mb-6 animate-fade-in-up">
+        <a href="{{ url_for('admin_dashboard') }}" class="text-slate-400 hover:text-white transition-colors">
+            ← 返回
+        </a>
+        <h1 class="text-2xl font-bold text-white">✨ 创建收集任务</h1>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin_create') }}" class="animate-fade-in-up delay-100">
+        <!-- 基本信息 -->
+        <div class="glass p-6 mb-4">
+            <h2 class="text-lg font-semibold text-white mb-4">📝 基本信息</h2>
+
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">收集标题 <span class="text-red-400">*</span></label>
+                <input type="text" name="title" class="input-field" placeholder="例：2025年春季学期作业收集" required>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">描述说明</label>
+                <textarea name="description" class="input-field" rows="3"
+                          placeholder="可选，对本次收集任务的补充说明"></textarea>
+            </div>
+
+            <div class="mb-2">
+                <label class="block text-sm text-slate-400 mb-2">目标邮箱</label>
+                <input type="email" name="target_email" class="input-field"
+                       placeholder="收集完成后自动发送到此邮箱（可选）">
+                <p class="text-xs text-slate-500 mt-1">全员提交后系统将自动把所有文件打包发送到此邮箱</p>
+            </div>
+        </div>
+
+        <!-- 文件类型 -->
+        <div class="glass p-6 mb-4">
+            <h2 class="text-lg font-semibold text-white mb-4">📁 允许的文件类型</h2>
+            <p class="text-sm text-slate-400 mb-4">选择允许提交的文件类型，不选则允许任意文件</p>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {% for key, ft in file_types.items() %}
+                <label class="file-type-label flex items-center gap-3 glass p-3 cursor-pointer hover-glow transition-all">
+                    <input type="checkbox" name="file_types" value="{{ key }}"
+                           class="file-type-cb"
+                           {% if key == 'any' %}checked{% endif %}>
+                    <span class="text-lg">{{ ft.icon }}</span>
+                    <div>
+                        <div class="text-sm text-white font-medium">{{ ft.name }}</div>
+                        {% if ft.ext %}
+                        <div class="text-xs text-slate-500">{{ ft.ext[:3] | join(' ') }}</div>
+                        {% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 人员名单 -->
+        <div class="glass p-6 mb-4">
+            <h2 class="text-lg font-semibold text-white mb-4">👥 人员名单</h2>
+            <p class="text-sm text-slate-400 mb-4">每行一个姓名，提交时将从下拉列表中选择</p>
+
+            <textarea name="people" class="input-field" rows="8"
+                      placeholder="张三&#10;李四&#10;王五&#10;（每行一个名字）"></textarea>
+            <p class="text-xs text-slate-500 mt-2" id="peopleCount">已输入 0 人</p>
+        </div>
+
+        <!-- 限制设置 -->
+        <div class="glass p-6 mb-6">
+            <h2 class="text-lg font-semibold text-white mb-4">⚙️ 限制设置</h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">最大文件数</label>
+                    <input type="number" name="max_files" class="input-field" value="10" min="1" max="100">
+                    <p class="text-xs text-slate-500 mt-1">每人最多可上传的文件数量</p>
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">单文件大小限制 (MB)</label>
+                    <input type="number" name="max_size_mb" class="input-field" value="50" min="1" max="500">
+                    <p class="text-xs text-slate-500 mt-1">每个文件的最大体积</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提交按钮 -->
+        <div class="flex justify-end gap-3">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn-ghost">取消</a>
+            <button type="submit" class="btn-primary px-8 py-3 text-base">
+                🚀 创建收集任务
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 人员计数
+const peopleTA = document.querySelector('textarea[name="people"]');
+const countEl = document.getElementById('peopleCount');
+function updateCount() {
+    const count = peopleTA.value.split('\n').filter(l => l.trim()).length;
+    countEl.textContent = `已输入 ${count} 人`;
+}
+peopleTA.addEventListener('input', updateCount);
+updateCount();
+</script>
+{% endblock %}

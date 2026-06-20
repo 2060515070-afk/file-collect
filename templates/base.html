@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FileCollect 文件收集站{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                }
+            }
+        }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #0a0a1a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        /* 背景渐变光晕 */
+        .bg-glow {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background:
+                radial-gradient(ellipse 600px 600px at 20% 20%, rgba(124,58,237,0.15), transparent),
+                radial-gradient(ellipse 500px 500px at 80% 80%, rgba(59,130,246,0.12), transparent),
+                radial-gradient(ellipse 400px 400px at 50% 50%, rgba(236,72,153,0.08), transparent);
+        }
+        /* 毛玻璃卡片 */
+        .glass {
+            background: rgba(255,255,255,0.04);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+        }
+        .glass-strong {
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+        }
+        /* 渐入动画 */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.6s ease-out forwards;
+            opacity: 0;
+        }
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+        .delay-300 { animation-delay: 0.3s; }
+        .delay-400 { animation-delay: 0.4s; }
+        /* 悬浮发光 */
+        .hover-glow {
+            transition: all 0.3s ease;
+        }
+        .hover-glow:hover {
+            box-shadow: 0 0 24px rgba(124,58,237,0.3), 0 0 48px rgba(59,130,246,0.15);
+            border-color: rgba(124,58,237,0.4);
+            transform: translateY(-2px);
+        }
+        /* 按钮样式 */
+        .btn-primary {
+            background: linear-gradient(135deg, #7c3aed, #3b82f6);
+            color: white; border: none; padding: 10px 24px;
+            border-radius: 10px; font-weight: 500; cursor: pointer;
+            transition: all 0.3s ease; font-size: 14px;
+            display: inline-block; text-decoration: none; text-align: center;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 0 20px rgba(124,58,237,0.5);
+            transform: translateY(-1px);
+        }
+        .btn-primary:disabled {
+            opacity: 0.5; cursor: not-allowed; transform: none;
+            box-shadow: none;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626, #ef4444);
+            color: white; border: none; padding: 10px 24px;
+            border-radius: 10px; font-weight: 500; cursor: pointer;
+            transition: all 0.3s ease; font-size: 14px;
+        }
+        .btn-danger:hover {
+            box-shadow: 0 0 20px rgba(220,38,38,0.5);
+            transform: translateY(-1px);
+        }
+        .btn-ghost {
+            background: rgba(255,255,255,0.06);
+            color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1);
+            padding: 10px 24px; border-radius: 10px;
+            font-weight: 500; cursor: pointer;
+            transition: all 0.3s ease; font-size: 14px;
+            display: inline-block; text-decoration: none; text-align: center;
+        }
+        .btn-ghost:hover {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.2);
+        }
+        /* 输入框 */
+        .input-field {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; padding: 10px 14px;
+            border-radius: 10px; width: 100%;
+            transition: all 0.3s ease; font-size: 14px;
+            outline: none;
+        }
+        .input-field:focus {
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124,58,237,0.2);
+            background: rgba(255,255,255,0.08);
+        }
+        .input-field::placeholder { color: #64748b; }
+        textarea.input-field { resize: vertical; min-height: 80px; }
+        select.input-field { cursor: pointer; }
+        /* 滚动条 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+        /* Flash 消息 */
+        .flash-success {
+            background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3);
+            color: #4ade80; padding: 12px 16px; border-radius: 10px;
+        }
+        .flash-error {
+            background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3);
+            color: #f87171; padding: 12px 16px; border-radius: 10px;
+        }
+        /* 导航栏 */
+        .nav-link {
+            color: #94a3b8; text-decoration: none; font-size: 14px;
+            transition: color 0.2s; padding: 6px 12px; border-radius: 8px;
+        }
+        .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
+        /* 移动端适配 */
+        @media (max-width: 640px) {
+            .glass, .glass-strong { border-radius: 12px; }
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <!-- 导航栏 -->
+    <nav class="relative z-10 glass" style="border-radius: 0; border-top: none; border-left: none; border-right: none;">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+            <a href="{{ url_for('index') }}" class="flex items-center gap-2 text-white font-semibold text-lg no-underline">
+                <span class="text-2xl">📦</span>
+                <span class="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">FileCollect</span>
+            </a>
+            <div class="flex items-center gap-2">
+                {% if session.get('is_admin') %}
+                    <a href="{{ url_for('admin_dashboard') }}" class="nav-link">管理后台</a>
+                    <a href="{{ url_for('admin_create') }}" class="nav-link">新建任务</a>
+                    <a href="{{ url_for('admin_logout') }}" class="nav-link text-red-400 hover:text-red-300">退出</a>
+                {% else %}
+                    <a href="{{ url_for('admin_login') }}" class="nav-link">管理员登录</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash 消息 -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 mt-4">
+                {% for category, message in messages %}
+                    <div class="flash-{{ category }} mb-2 animate-fade-in-up">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- 主内容 -->
+    <main class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="relative z-10 text-center py-6 text-sm text-slate-600">
+        <p>FileCollect 文件收集站 &copy; 2025</p>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

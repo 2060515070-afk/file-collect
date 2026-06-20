@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}管理后台 - FileCollect{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6 animate-fade-in-up">
+    <div>
+        <h1 class="text-2xl font-bold text-white">📋 收集任务管理</h1>
+        <p class="text-slate-400 text-sm mt-1">管理所有文件收集任务</p>
+    </div>
+    <a href="{{ url_for('admin_create') }}" class="btn-primary">
+        ＋ 新建任务
+    </a>
+</div>
+
+{% if collections %}
+<div class="space-y-4 animate-fade-in-up delay-100">
+    {% for col in collections %}
+    {% set people = col.get('people', []) %}
+    {% set submitted = people | selectattr('submitted') | list | length %}
+    {% set total = people | length %}
+    <div class="glass p-5 hover-glow">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h3 class="text-lg font-semibold text-white truncate">{{ col.title }}</h3>
+                {% if col.description %}
+                <p class="text-slate-400 text-sm mt-1 truncate">{{ col.description }}</p>
+                {% endif %}
+                <div class="flex flex-wrap gap-3 mt-3 text-sm">
+                    <span class="flex items-center gap-1">
+                        <span class="text-green-400">✅</span>
+                        <span class="text-slate-300">{{ submitted }}/{{ total }} 已提交</span>
+                    </span>
+                    <span class="flex items-center gap-1">
+                        <span class="text-blue-400">📅</span>
+                        <span class="text-slate-400">{{ col.created_at[:16] | replace('T', ' ') }}</span>
+                    </span>
+                    {% if col.target_email %}
+                    <span class="flex items-center gap-1">
+                        <span class="text-violet-400">📧</span>
+                        <span class="text-slate-400">{{ col.target_email }}</span>
+                    </span>
+                    {% endif %}
+                    {% if col.emailed %}
+                    <span class="flex items-center gap-1">
+                        <span class="text-green-400">📬</span>
+                        <span class="text-slate-400">已发送</span>
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <a href="{{ url_for('admin_collection', collection_id=col.id) }}" class="btn-ghost">
+                    查看详情
+                </a>
+                <button onclick="deleteCollection('{{ col.id }}', '{{ col.title }}')" class="btn-danger px-4">
+                    删除
+                </button>
+            </div>
+        </div>
+        {% if total > 0 %}
+        <div class="mt-3">
+            <div class="w-full bg-white/5 rounded-full h-2">
+                <div class="h-2 rounded-full transition-all duration-500"
+                     style="width: {{ (submitted / total * 100) | round }}%;
+                            background: linear-gradient(90deg, #22c55e, #14b8a6);"></div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="glass p-12 text-center animate-fade-in-up delay-100">
+    <div class="text-5xl mb-4">📭</div>
+    <h3 class="text-xl font-semibold text-white mb-2">暂无收集任务</h3>
+    <p class="text-slate-400 mb-6">点击下方按钮创建你的第一个文件收集任务</p>
+    <a href="{{ url_for('admin_create') }}" class="btn-primary">
+        ＋ 创建收集任务
+    </a>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function deleteCollection(id, title) {
+    if (!confirm(`确定要删除「${title}」吗？\n此操作不可恢复，所有已上传的文件将被删除。`)) return;
+    fetch(`/api/collection/${id}/delete`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert(data.error || '删除失败');
+        })
+        .catch(() => alert('删除失败，请重试'));
+}
+</script>
+{% endblock %}

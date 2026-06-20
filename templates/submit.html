@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}提交文件 - {{ collection.title }}{% endblock %}
+
+{% block content %}
+{% set allowed = collection.get('allowed_types', ['any']) %}
+{% set max_files = collection.get('max_files', 10) %}
+{% set max_size_mb = collection.get('max_size_mb', 50) %}
+
+<div class="max-w-2xl mx-auto">
+    <div class="glass-strong p-6 sm:p-8 animate-fade-in-up">
+        <!-- 标题 -->
+        <div class="text-center mb-6">
+            <div class="text-4xl mb-3">📤</div>
+            <h1 class="text-2xl font-bold text-white">{{ collection.title }}</h1>
+            {% if collection.description %}
+            <p class="text-slate-400 text-sm mt-2">{{ collection.description }}</p>
+            {% endif %}
+        </div>
+
+        <!-- 限制信息 -->
+        <div class="glass p-4 mb-6 text-sm">
+            <div class="flex flex-wrap gap-4 justify-center text-slate-400">
+                <div class="flex items-center gap-1">
+                    <span>📎</span>
+                    <span>最多 <strong class="text-white">{{ max_files }}</strong> 个文件</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span>💾</span>
+                    <span>单文件最大 <strong class="text-white">{{ max_size_mb }}MB</strong></span>
+                </div>
+                {% if 'any' not in allowed %}
+                <div class="flex items-center gap-1">
+                    <span>📁</span>
+                    <span>允许类型：
+                        {% for type_key in allowed %}
+                            {% if type_key in file_types %}
+                                <span class="inline-flex items-center gap-0.5">{{ file_types[type_key].icon }}{{ file_types[type_key].name }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 提交表单 -->
+        <form id="submitForm" onsubmit="handleSubmit(event)">
+            <!-- 姓名选择 -->
+            <div class="mb-5">
+                <label class="block text-sm text-slate-400 mb-2">👤 选择您的姓名 <span class="text-red-400">*</span></label>
+                <select name="person_id" class="input-field" required id="personSelect">
+                    <option value="">-- 请选择 --</option>
+                    {% for person in collection.people %}
+                        {% if not person.submitted %}
+                        <option value="{{ person.id }}">{{ person.name }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                {% set available = collection.people | rejectattr('submitted') | list | length %}
+                {% if available == 0 %}
+                <p class="text-xs text-orange-400 mt-1">⚠️ 所有人都已提交</p>
+                {% endif %}
+            </div>
+
+            <!-- 文件上传区域 -->
+            <div class="mb-5">
+                <label class="block text-sm text-slate-400 mb-2">📂 选择文件 <span class="text-red-400">*</span></label>
+                <div id="dropZone"
+                     class="glass border-2 border-dashed border-white/10 rounded-2xl p-8 text-center cursor-pointer transition-all hover:border-violet-500/40 hover:bg-white/[0.03]"
+                     onclick="document.getElementById('fileInput').click()">
+                    <div class="text-4xl mb-3" id="dropIcon">☁️</div>
+                    <p class="text-slate-300 font-medium" id="dropText">点击选择文件或拖拽到此处</p>
+                    <p class="text-xs text-slate-500 mt-1" id="dropHint">支持同时上传多个文件</p>
+                </div>
+                <input type="file" id="fileInput" name="files" multiple class="hidden"
+                       {% if 'any' not in allowed %}
+                       accept="{% for type_key in allowed %}{% if type_key in file_types %}{{ file_types[type_key].ext | join(',') }}{% endif %}{% endfor %}"
+                       {% endif %}
+                       onchange="handleFiles(this.files)">
+            </div>
+
+            <!-- 已选文件列表 -->
+            <div id="fileList" class="mb-5 hidden">
+                <label class="block text-sm text-slate-400 mb-2">已选择的文件</label>
+                <div id="fileItems" class="space-y-2"></div>
+                <p class="text-xs text-slate-500 mt-2" id="fileSummary"></p>
+            </div>
+
+            <!-- 提交按钮 -->
+            <button type="submit" class="btn-primary w-full py-3 text-base" id="submitBtn" disabled>
+                📤 提交文件
+            </button>
+        </form>
+
+        <!-- 成功提示（默认隐藏） -->
+        <div id="successMsg" class="hidden text-center py-8">
+            <div class="text-5xl mb-4 animate-bounce">🎉</div>
+            <h2 class="text-2xl font-bold text-white mb-2">提交成功！</h2>
+            <p class="text-slate-400 mb-6">您的文件已成功上传，感谢您的配合。</p>
+            <button onclick="location.reload()" class="btn-ghost">继续提交（其他人）</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedFiles = [];
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const submitBtn = document.getElementById('submitBtn');
+
+// 拖拽事件
+dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#7c3aed';
+    dropZone.style.background = 'rgba(124,58,237,0.05)';
+    document.getElementById('dropIcon').textContent = '📥';
+});
+
+dropZone.addEventListener('dragleave', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+    document.getElementById('dropIcon').textContent = '☁️';
+});
+
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+    document.getElementById('dropIcon').textContent = '☁️';
+    handleFiles(e.dataTransfer.files);
+});
+
+function handleFiles(files) {
+    selectedFiles = Array.from(files);
+    renderFileList();
+}
+
+function renderFileList() {
+    const listEl = document.getElementById('fileList');
+    const itemsEl = document.getElementById('fileItems');
+    const summaryEl = document.getElementById('fileSummary');
+
+    if (selectedFiles.length === 0) {
+        listEl.classList.add('hidden');
+        submitBtn.disabled = true;
+        return;
+    }
+
+    listEl.classList.remove('hidden');
+    itemsEl.innerHTML = '';
+
+    let totalSize = 0;
+    selectedFiles.forEach((f, i) => {
+        totalSize += f.size;
+        const sizeStr = f.size > 1048576
+            ? (f.size / 1048576).toFixed(1) + ' MB'
+            : (f.size / 1024).toFixed(1) + ' KB';
+
+        const div = document.createElement('div');
+        div.className = 'glass flex items-center justify-between px-3 py-2';
+        div.innerHTML = `
+            <div class="flex items-center gap-2 min-w-0">
+                <span class="text-sm">📎</span>
+                <span class="text-sm text-slate-300 truncate">${f.name}</span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <span class="text-xs text-slate-500">${sizeStr}</span>
+                <button type="button" onclick="removeFile(${i})" class="text-red-400 hover:text-red-300 text-sm ml-1">×</button>
+            </div>
+        `;
+        itemsEl.appendChild(div);
+    });
+
+    const totalStr = totalSize > 1048576
+        ? (totalSize / 1048576).toFixed(1) + ' MB'
+        : (totalSize / 1024).toFixed(1) + ' KB';
+    summaryEl.textContent = `共 ${selectedFiles.length} 个文件，总大小 ${totalStr}`;
+
+    document.getElementById('dropText').textContent = `已选择 ${selectedFiles.length} 个文件`;
+    document.getElementById('dropHint').textContent = '点击或拖拽可重新选择';
+    submitBtn.disabled = false;
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    if (selectedFiles.length === 0) {
+        document.getElementById('dropText').textContent = '点击选择文件或拖拽到此处';
+        document.getElementById('dropHint').textContent = '支持同时上传多个文件';
+    }
+    renderFileList();
+}
+
+function handleSubmit(e) {
+    e.preventDefault();
+    const personId = document.getElementById('personSelect').value;
+    if (!personId) { alert('请选择您的姓名'); return; }
+    if (selectedFiles.length === 0) { alert('请选择要上传的文件'); return; }
+
+    const formData = new FormData();
+    formData.append('person_id', personId);
+    selectedFiles.forEach(f => formData.append('files', f));
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '⏳ 上传中...';
+
+    fetch('/api/submit/{{ collection.id }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('submitForm').classList.add('hidden');
+            document.getElementById('successMsg').classList.remove('hidden');
+        } else {
+            alert(data.error || '提交失败');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '📤 提交文件';
+        }
+    })
+    .catch(() => {
+        alert('提交失败，请检查网络后重试');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '📤 提交文件';
+    });
+}
+</script>
+{% endblock %}
