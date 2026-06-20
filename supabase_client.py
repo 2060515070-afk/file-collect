@@ -8,8 +8,8 @@ import json
 import urllib.request
 import urllib.error
 
-SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
-SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')  # anon key 或 service_role key
+SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://uvolvfwbzyfipzuuppqg.supabase.co')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2b2x2ZndienlmaXB6dXVwcHFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTc3NTMsImV4cCI6MjA5NzM3Mzc1M30.bHcP7mKiyRT_ISQqvpsyA3w1Mir7XAiXvR4fGghc81M')
 TABLE_NAME = 'collections'
 
 
@@ -46,13 +46,13 @@ def _request(method, path, data=None):
 
 
 def get_all_collections():
-    """获取所有收集任务"""
+    """获取所有收集任务（返回 dict，key 为 collection id）"""
     result = _request('GET', f'{TABLE_NAME}?order=created_at.desc')
     if result is None:
         return None
-    collections = []
+    collections = {}
     for row in result:
-        collections.append({
+        collections[row['id']] = {
             'id': row['id'],
             'title': row.get('title', ''),
             'description': row.get('description', ''),
@@ -64,7 +64,7 @@ def get_all_collections():
             'created_at': row.get('created_at', ''),
             'emailed': row.get('emailed', False),
             'emailed_at': row.get('emailed_at'),
-        })
+        }
     return collections
 
 
