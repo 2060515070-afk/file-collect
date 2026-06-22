@@ -699,7 +699,126 @@ def submit_page(collection_id):
     collection = get_collection(collection_id)
     if not collection:
         return render_template('error.html', message='收集任务不存在或已过期'), 404
-    return render_template('submit.html', collection=collection, file_types=FILE_TYPES, hide_admin_link=True)
+    return render_template('submit.html', collection=collection, file_types=FILE_TYPES,
+                           hide_admin_link=True)
+
+
+@app.route('/api/get-upload-url/<collection_id>', methods=['POST'])
+def api_get_upload_url(collection_id):
+    """为前端生成直传 Supabase Storage 的签名 URL"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    data = request.get_json()
+    person_id = data.get('person_id', '')
+    files_info = data.get('files', [])  # [{name, size, type}]
+
+    if not person_id:
+        return jsonify({'error': '请选择您的姓名'}), 400
+
+    # 查找人员
+    person = None
+    for p in collection['people']:
+        if p['id'] == person_id:
+            person = p
+            break
+    if not person:
+        return jsonify({'error': '未找到您的姓名'}), 400
+    if person.get('submitted'):
+        return jsonify({'error': '您已提交过文件'}), 400
+
+    # 验证文件
+    allowed_types = collection.get('allowed_types', ['any'])
+    max_files = collection.get('max_files', 10)
+    max_size_mb = collection.get('max_size_mb', 50)
+    max_size_bytes = max_size_mb * 1024 * 1024
+
+    if len(files_info) > max_files:
+        return jsonify({'error': f'最多只能上传 {max_files} 个文件'}), 400
+
+    upload_urls = []
+    for f in files_info:
+        fname = f.get('name', '')
+        fsize = f.get('size', 0)
+
+        if fsize > max_size_bytes:
+            return jsonify({'error': f'文件 {fname} 超过大小限制 ({max_size_mb}MB)'}), 400
+
+        # 检查文件类型
+        if 'any' not in allowed_types and 'folder' not in allowed_types:
+            ext = os.path.splitext(fname)[1].lower()
+            type_allowed = any(
+                ext in FILE_TYPES.get(t, {}).get('ext', []) or t == 'any'
+                for t in allowed_types if t in FILE_TYPES
+            )
+            if not type_allowed:
+                return jsonify({'error': f'文件 {fname} 的类型不被允许'}), 400
+
+        safe_name = f"{uuid.uuid4().hex[:8]}_{fname}"
+        storage_path = f"{collection_id}/{person_id}/{safe_name}"
+
+        signed_url = sb.get_upload_url(storage_path) if _sb_available() else None
+        upload_urls.append({
+            'original_name': fname,
+            'safe_name': safe_name,
+            'storage_path': storage_path,
+            'signed_url': signed_url,
+        })
+
+    return jsonify({'success': True, 'uploads': upload_urls})
+
+
+@app.route('/api/confirm-upload/<collection_id>', methods=['POST'])
+def api_confirm_upload(collection_id):
+    """前端直传完成后，确认并更新数据库"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    data = request.get_json()
+    person_id = data.get('person_id', '')
+    files = data.get('files', [])  # [{original_name, safe_name, storage_path, size}]
+
+    if not person_id:
+        return jsonify({'error': '请选择您的姓名'}), 400
+
+    person_index = None
+    for i, p in enumerate(collection['people']):
+        if p['id'] == person_id:
+            person_index = i
+            break
+    if person_index is None:
+        return jsonify({'error': '未找到您的姓名'}), 400
+    if collection['people'][person_index].get('submitted'):
+        return jsonify({'error': '您已提交过文件'}), 400
+
+    uploaded_files = []
+    for f in files:
+        uploaded_files.append({
+            'original_name': f['original_name'],
+            'saved_name': f['safe_name'],
+            'storage_path': f['storage_path'],
+            'path': '',
+            'size': f.get('size', 0),
+            'uploaded_at': datetime.now().isoformat()
+        })
+
+    if not uploaded_files:
+        return jsonify({'error': '没有有效的文件'}), 400
+
+    collection['people'][person_index]['submitted'] = True
+    collection['people'][person_index]['files'] = uploaded_files
+    collection['people'][person_index]['submitted_at'] = datetime.now().isoformat()
+
+    update_collection(collection_id, {
+        'people': collection['people'],
+        'emailed': False
+    })
+
+    check_and_auto_email(collection_id)
+
+    return jsonify({'success': True, 'files_count': len(uploaded_files)})
 
 
 @app.route('/api/submit/<collection_id>', methods=['POST'])

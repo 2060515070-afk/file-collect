@@ -206,18 +206,14 @@ function removeFile(index) {
     renderFileList();
 }
 
-function handleSubmit(e) {
+async function handleSubmit(e) {
     e.preventDefault();
     const personId = document.getElementById('personSelect').value;
     if (!personId) { alert('请选择您的姓名'); return; }
     if (selectedFiles.length === 0) { alert('请选择要上传的文件'); return; }
 
-    const formData = new FormData();
-    formData.append('person_id', personId);
-    selectedFiles.forEach(f => formData.append('files', f));
-
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '⏳ 上传中...';
+    submitBtn.innerHTML = '⏳ 准备上传...';
 
     // 显示进度弹窗
     document.getElementById('uploadModal').classList.add('active');
@@ -225,43 +221,79 @@ function handleSubmit(e) {
     const progressText = document.getElementById('uploadProgressText');
     const statusText = document.getElementById('uploadStatus');
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/submit/{{ collection.id }}');
+    try {
+        // 第一步：获取签名上传 URL
+        statusText.textContent = '正在获取上传链接...';
+        const filesMeta = selectedFiles.map(f => ({ name: f.name, size: f.size, type: f.type }));
+        const urlResp = await fetch('/api/get-upload-url/{{ collection.id }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ person_id: personId, files: filesMeta })
+        });
+        const urlData = await urlResp.json();
+        if (!urlData.success) { throw new Error(urlData.error || '获取上传链接失败'); }
 
-    xhr.upload.addEventListener('progress', e => {
-        if (e.lengthComputable) {
-            const pct = Math.round(e.loaded / e.total * 100);
+        // 第二步：逐个直传到 Supabase Storage
+        const uploadedFiles = [];
+        const totalSize = selectedFiles.reduce((s, f) => s + f.size, 0);
+        let uploadedSize = 0;
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+            const file = selectedFiles[i];
+            const uploadInfo = urlData.uploads[i];
+
+            statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}`;
+
+            // 直传到 Supabase
+            const resp = await fetch(uploadInfo.signed_url, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': file.type || 'application/octet-stream' }
+            });
+
+            if (!resp.ok) {
+                throw new Error(`文件 ${file.name} 上传失败 (${resp.status})`);
+            }
+
+            uploadedSize += file.size;
+            const pct = Math.round(uploadedSize / totalSize * 100);
             fill.style.width = pct + '%';
             progressText.textContent = pct + '%';
-            statusText.textContent = pct < 100 ? `正在上传 ${selectedFiles.length} 个文件...` : '服务器处理中...';
-        }
-    });
 
-    xhr.addEventListener('load', () => {
+            uploadedFiles.push({
+                original_name: file.name,
+                safe_name: uploadInfo.safe_name,
+                storage_path: uploadInfo.storage_path,
+                size: file.size
+            });
+        }
+
+        // 第三步：确认上传，更新数据库
+        statusText.textContent = '服务器处理中...';
+        fill.style.width = '100%';
+
+        const confirmResp = await fetch('/api/confirm-upload/{{ collection.id }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ person_id: personId, files: uploadedFiles })
+        });
+        const confirmData = await confirmResp.json();
+
         document.getElementById('uploadModal').classList.remove('active');
-        try {
-            const data = JSON.parse(xhr.responseText);
-            if (data.success) {
-                document.getElementById('submitForm').classList.add('hidden');
-                document.getElementById('farewellCard').innerHTML = getFarewell();
-                document.getElementById('successMsg').classList.remove('hidden');
-            } else {
-                alert(data.error || '提交失败');
-                resetSubmitBtn();
-            }
-        } catch {
-            alert('提交失败，请重试');
+
+        if (confirmData.success) {
+            document.getElementById('submitForm').classList.add('hidden');
+            document.getElementById('farewellCard').innerHTML = getFarewell();
+            document.getElementById('successMsg').classList.remove('hidden');
+        } else {
+            alert(confirmData.error || '提交失败');
             resetSubmitBtn();
         }
-    });
-
-    xhr.addEventListener('error', () => {
+    } catch (err) {
         document.getElementById('uploadModal').classList.remove('active');
-        alert('网络错误，请检查连接后重试');
+        alert(err.message || '上传失败，请重试');
         resetSubmitBtn();
-    });
-
-    xhr.send(formData);
+    }
 }
 
 function resetSubmitBtn() {

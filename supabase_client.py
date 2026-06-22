@@ -132,7 +132,7 @@ def ensure_bucket():
 
 
 def upload_file(file_data, storage_path, content_type='application/octet-stream'):
-    """上传文件到 Supabase Storage"""
+    """上传文件到 Supabase Storage（服务端用）"""
     ensure_bucket()
     url = f"{SUPABASE_URL}/storage/v1/object/{STORAGE_BUCKET}/{storage_path}"
     headers = {
@@ -151,6 +151,27 @@ def upload_file(file_data, storage_path, content_type='application/octet-stream'
     except Exception as e:
         print(f"[storage] upload error: {e}")
         return False
+
+
+def get_upload_url(storage_path):
+    """获取签名上传 URL，供前端直传 Supabase Storage"""
+    ensure_bucket()
+    url = f"{SUPABASE_URL}/storage/v1/object/upload/sign/{STORAGE_BUCKET}/{storage_path}"
+    headers = {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}',
+        'Content-Type': 'application/json',
+    }
+    body = json.dumps({'expiresIn': 300}).encode('utf-8')  # 5分钟有效
+    req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            signed_url = data.get('signedURL', '')
+            return f"{SUPABASE_URL}{signed_url}" if signed_url else None
+    except Exception as e:
+        print(f"[storage] get_upload_url error: {e}")
+        return None
 
 
 def delete_file(storage_path):
