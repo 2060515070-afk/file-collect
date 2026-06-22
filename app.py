@@ -322,18 +322,31 @@ def debug_supabase():
         result['read_count'] = len(cols) if cols else 0
     except Exception as e:
         result['read_error'] = str(e)
-    # 测试写入 - 直接用 urllib 捕获详细错误
+    # 测试写入 - 先删后插，排除主键冲突
     if _sb_available():
-        url = f"{os.environ.get('SUPABASE_URL')}/rest/v1/collections"
-        test_row = {'id': 'diag_test_001', 'title': 'diagnostic', 'description': '', 'target_email': '', 'allowed_types': '["any"]', 'people': '[]', 'max_files': 10, 'max_size_mb': 50, 'created_at': '2026-01-01T00:00:00', 'emailed': False}
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY', '')
+        test_id = 'diag_test_001'
+        # 先删除旧测试记录
+        try:
+            del_req = urllib.request.Request(
+                f"{supabase_url}/rest/v1/collections?id=eq.{test_id}",
+                headers={'apikey': supabase_key, 'Authorization': f'Bearer {supabase_key}'},
+                method='DELETE'
+            )
+            urllib.request.urlopen(del_req, timeout=10)
+        except Exception:
+            pass
+        # 再尝试写入
+        test_row = {'id': test_id, 'title': 'diagnostic', 'description': '', 'target_email': '', 'allowed_types': '["any"]', 'people': '[]', 'max_files': 10, 'max_size_mb': 50, 'created_at': '2026-01-01T00:00:00', 'emailed': False}
         headers = {
-            'apikey': os.environ.get('SUPABASE_KEY', ''),
-            'Authorization': f"Bearer {os.environ.get('SUPABASE_KEY', '')}",
+            'apikey': supabase_key,
+            'Authorization': f'Bearer {supabase_key}',
             'Content-Type': 'application/json',
             'Prefer': 'return=representation',
         }
         body = json.dumps(test_row).encode('utf-8')
-        req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+        req = urllib.request.Request(f"{supabase_url}/rest/v1/collections", data=body, headers=headers, method='POST')
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 result['write_ok'] = True
