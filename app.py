@@ -179,12 +179,21 @@ def admin_required(f):
 # ── 邮件发送（Resend API）──────────────────────────────────────────
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 
+try:
+    import resend
+    if RESEND_API_KEY:
+        resend.api_key = RESEND_API_KEY
+except ImportError:
+    resend = None
+
 def send_email(to_email, subject, body, attachment_path=None, attachment_name=None):
     import base64 as b64
     if not RESEND_API_KEY:
         return False, 'RESEND_API_KEY 未配置'
+    if not resend:
+        return False, 'resend 包未安装'
     try:
-        payload = {
+        params = {
             'from': 'FileCollect <onboarding@resend.dev>',
             'to': [to_email],
             'subject': subject,
@@ -193,23 +202,15 @@ def send_email(to_email, subject, body, attachment_path=None, attachment_name=No
         if attachment_path and os.path.exists(attachment_path):
             with open(attachment_path, 'rb') as f:
                 file_data = f.read()
-            payload['attachments'] = [{
+            params['attachments'] = [{
                 'filename': attachment_name or 'files.zip',
                 'content': b64.b64encode(file_data).decode('utf-8'),
             }]
-        req = urllib.request.Request(
-            'https://api.resend.com/emails',
-            data=json.dumps(payload).encode('utf-8'),
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
-            method='POST'
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-            return True, f'邮件发送成功'
-    except urllib.error.HTTPError as e:
-        return False, f'邮件发送失败 HTTP {e.code}: {e.read().decode("utf-8", errors="replace")[:300]}'
+        resend.api_key = RESEND_API_KEY
+        result = resend.Emails.send(params)
+        return True, '邮件发送成功'
     except Exception as e:
-        return False, f'邮件发送失败: {str(e)}'
+        return False, f'邮件发送失败: {str(e)[:300]}'
 
 
 def create_zip(collection):
@@ -331,28 +332,23 @@ def debug_smtp():
     """诊断邮件配置"""
     result = {
         'resend_key_set': bool(RESEND_API_KEY),
-        'resend_key_prefix': RESEND_API_KEY[:10] + '...' if RESEND_API_KEY else '(empty)',
+        'resend_sdk_installed': resend is not None,
     }
     if not RESEND_API_KEY:
         result['error'] = 'RESEND_API_KEY not set'
         return jsonify(result)
+    if not resend:
+        result['error'] = 'resend package not installed'
+        return jsonify(result)
     # 测试 Resend API
     try:
-        req = urllib.request.Request(
-            'https://api.resend.com/emails',
-            data=json.dumps({'from': 'FileCollect <onboarding@resend.dev>', 'to': ['delivered@resend.dev'], 'subject': 'Test', 'html': '<p>test</p>'}).encode('utf-8'),
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
-            method='POST'
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            result['test_send'] = 'ok'
-            result['test_id'] = data.get('id', '')
-    except urllib.error.HTTPError as e:
-        result['test_send'] = f'failed HTTP {e.code}'
-        result['test_detail'] = e.read().decode('utf-8', errors='replace')[:300]
+        resend.api_key = RESEND_API_KEY
+        resp = resend.Emails.send({'from': 'onboarding@resend.dev', 'to': ['delivered@resend.dev'], 'subject': 'Test', 'html': '<p>test</p>'})
+        result['test_send'] = 'ok'
+        result['test_id'] = str(resp)
     except Exception as e:
-        result['test_send'] = f'failed: {type(e).__name__}: {str(e)[:200]}'
+        result['test_send'] = f'failed: {type(e).__name__}'
+        result['test_detail'] = str(e)[:500]
     return jsonify(result)
 
 
