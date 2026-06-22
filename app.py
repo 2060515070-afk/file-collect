@@ -353,8 +353,7 @@ def admin_create():
         # 解析人员名单
         people = []
         if people_raw:
-            for line in people_raw.strip().split('\
-'):
+            for line in people_raw.strip().split('\n'):
                 name = line.strip()
                 if name:
                     people.append({
