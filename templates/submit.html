@@ -97,8 +97,8 @@
         <div id="successMsg" class="hidden text-center py-8">
             <div class="text-5xl mb-4 animate-bounce">🎉</div>
             <h2 class="text-2xl font-bold text-white mb-2">提交成功！</h2>
-            <p class="text-slate-400 mb-6" id="farewellMsg">您的文件已成功上传，感谢您的配合。</p>
-            <button onclick="location.reload()" class="btn-ghost">继续提交（其他人）</button>
+            <div id="farewellCard" class="glass p-6 mt-4 mx-auto max-w-lg text-left"></div>
+            <button onclick="location.reload()" class="btn-ghost mt-6">继续提交（其他人）</button>
         </div>
 
         <!-- 提交进度弹窗 -->
@@ -243,7 +243,7 @@ function handleSubmit(e) {
             const data = JSON.parse(xhr.responseText);
             if (data.success) {
                 document.getElementById('submitForm').classList.add('hidden');
-                document.getElementById('farewellMsg').textContent = getFarewell();
+                document.getElementById('farewellCard').innerHTML = getFarewell();
                 document.getElementById('successMsg').classList.remove('hidden');
             } else {
                 alert(data.error || '提交失败');
@@ -270,24 +270,81 @@ function resetSubmitBtn() {
 }
 
 function getFarewell() {
-    const msgs = [
-        '感谢你的配合，世界因你而更美好 ✨',
-        '文件已安全送达，你可以安心去摸鱼了 🐟',
-        '提交成功！今天的你也是最棒的 💪',
-        '一切顺利！去喝杯咖啡休息一下吧 ☕',
-        '完美提交！效率之王非你莫属 👑',
-        '文件已到位，感谢大佬的支持 🙏',
-        '搞定了！你是最靓的仔 ✌️',
-        '提交完毕，剩下的交给时间吧 ⏳',
-        '干得漂亮！又完成了一件事 🎯',
-        '文件已入库，感谢你的速度与激情 🏎️',
-        '成功！你让这个世界多了一份秩序 📋',
-        '提交完成，愿你今天心情像这个页面一样顺畅 🌈',
-        '文件已到位，深呼吸，继续前行 🍃',
-        '完美！你的效率让服务器都为你鼓掌 👏',
-        '搞定了，去享受生活吧，你值得 🌟',
+    const isMale = Math.random() < 0.5;
+    const person = isMale ? '男学委' : '女学委';
+    const emoji = isMale ? '🤴' : '👸';
+    const gradient = isMale
+        ? 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
+        : 'linear-gradient(135deg, #ec4899, #f97316)';
+
+    const maleMsgs = [
+        // 颜值
+        '男学委的颜值，足以让全班的PPT模板都自愧不如 ✨',
+        '就凭男学委这张脸，交文件都变成了一种享受 🌟',
+        '男学委帅到连文件都想多被他看两眼 👀',
+        '有人说男学委像明星？不，明星像他 💫',
+        '男学委的侧颜，比这份作业的排版还精致 🎨',
+        // 能力
+        '男学委收文件的速度，比你交文件的速度还快 ⚡',
+        '论收作业，男学委是全宇宙最强学委，没有之一 🏆',
+        '男学委一个人能顶三个助教，还不用发工资 💰',
+        '男学委的Excel表格，比你的毕业论文还严谨 📊',
+        '有男学委在，全班的GPA都自动+0.5 📈',
+        // 品质
+        '男学委的责任心，比他的发际线还要坚挺 💪',
+        '男学委催作业从不发火，这份修养值得诺贝尔和平奖 🕊️',
+        '遇到男学委这样的学委，是全班上辈子修来的福气 🍀',
+        '男学委的耐心，足够再带三届毕业班 🎓',
+        '全班最靠谱的男人？请叫他男学委 🫡',
+        // 幽默
+        '男学委说：作业迟交没关系，但你得请我喝奶茶 🧋',
+        '男学委已收到你的文件，他的微笑比太阳还温暖 ☀️',
+        '恭喜你！你刚刚完成了和男学委的完美配合 🤝',
+        '男学委温馨提示：交完作业记得吃饭，别像我一样帅到没朋友 😎',
+        '作业已送达！男学委表示非常满意，并给了你一个五星好评 ⭐',
     ];
-    return msgs[Math.floor(Math.random() * msgs.length)];
+
+    const femaleMsgs = [
+        // 颜值
+        '女学委的美貌，连数据库都存不下 🌸',
+        '就凭女学委的颜值，这份作业都值满分 💯',
+        '女学委一笑，整个服务器都心动了 💗',
+        '有人说女学委像仙女？不，仙女像她 ✨',
+        '女学委的眼睛，比你的代码还要闪亮 💎',
+        // 能力
+        '女学委整理文件的能力，比你整理房间强一万倍 📂',
+        '论收作业，女学委是全班的定海神针 🌊',
+        '女学委一个人就是一个教务处，还比教务处温柔 🌷',
+        '女学委的记忆力，比你的硬盘还靠谱 💾',
+        '有女学委在，老师都不用操心收作业的事了 🎯',
+        // 品质
+        '女学委的温柔，是全班最治愈的存在 🌙',
+        '女学委催作业的方式，让你心甘情愿立刻交 💌',
+        '遇到女学委这样的学委，是全班中了彩票 🎰',
+        '女学委的细心，连你文件名写错都能发现 🔍',
+        '全班最靠谱的女生？请叫她女学委 👑',
+        // 幽默
+        '女学委说：作业迟交没关系，但你得夸我好看 💄',
+        '女学委已收到你的文件，她开心得转了个圈 🎀',
+        '恭喜你！你刚刚获得了女学委的微笑认证 😊',
+        '女学委温馨提示：交完作业早点休息，明天还要继续被我催 💤',
+        '作业已送达！女学委表示非常满意，并送你一朵小花 🌺',
+    ];
+
+    const msgs = isMale ? maleMsgs : femaleMsgs;
+    const msg = msgs[Math.floor(Math.random() * msgs.length)];
+
+    return `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <span style="font-size:32px;">${emoji}</span>
+            <div>
+                <div style="font-size:15px;font-weight:700;background:${gradient};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${person}发来贺电</div>
+            </div>
+        </div>
+        <div style="font-size:14px;color:#e2e8f0;line-height:1.8;padding:12px 16px;background:rgba(255,255,255,0.04);border-radius:12px;border-left:3px solid ${isMale ? '#3b82f6' : '#ec4899'};">
+            ${msg}
+        </div>
+    `;
 }
 </script>
 {% endblock %}
