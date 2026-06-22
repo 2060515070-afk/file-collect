@@ -649,7 +649,7 @@ def submit_page(collection_id):
     collection = get_collection(collection_id)
     if not collection:
         return render_template('error.html', message='收集任务不存在或已过期'), 404
-    return render_template('submit.html', collection=collection, file_types=FILE_TYPES)
+    return render_template('submit.html', collection=collection, file_types=FILE_TYPES, hide_admin_link=True)
 
 
 @app.route('/api/submit/<collection_id>', methods=['POST'])
