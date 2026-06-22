@@ -72,17 +72,11 @@
         <!-- 操作按钮 -->
         <div class="glass p-5 animate-fade-in-up delay-200 space-y-3">
             <h2 class="text-base font-semibold text-white mb-3">⚡ 操作</h2>
-            <!-- 发送邮件 -->
-            <div>
-                <label class="block text-sm text-slate-400 mb-2">📧 发送邮件</label>
-                <div class="flex gap-2">
-                    <input type="email" id="emailTo" class="input-field text-sm flex-1"
-                           value="{{ collection.target_email }}"
-                           placeholder="输入收件邮箱">
-                    <button onclick="sendEmail()" class="btn-primary px-4 shrink-0" id="emailBtn">发送</button>
-                </div>
-                <p class="text-xs text-slate-500 mt-1">留空则发送到创建时设定的邮箱</p>
-            </div>
+            {% if collection.target_email %}
+            <button onclick="sendEmail()" class="btn-primary w-full" id="emailBtn">
+                📧 发送邮件（含 ZIP 附件）
+            </button>
+            {% endif %}
             <a href="/api/collection/{{ collection.id }}/download-zip" class="btn-ghost w-full block text-center">
                 📦 下载 ZIP 压缩包
             </a>
@@ -208,36 +202,28 @@ function copyLink() {
 
 function sendEmail() {
     const btn = document.getElementById('emailBtn');
-    const emailInput = document.getElementById('emailTo');
-    const email = emailInput ? emailInput.value.trim() : '';
-    if (!email) { alert('请输入收件邮箱'); return; }
     btn.disabled = true;
     btn.textContent = '发送中...';
     fetch('/api/collection/{{ collection.id }}/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email })
+        body: JSON.stringify({})
     })
     .then(r => r.json())
     .then(data => {
         if (data.success) {
             btn.textContent = '✅ 发送成功';
             btn.style.background = 'linear-gradient(135deg, #22c55e, #14b8a6)';
-            setTimeout(() => {
-                btn.textContent = '发送';
-                btn.style.background = '';
-                btn.disabled = false;
-            }, 3000);
         } else {
             alert(data.error || '发送失败');
             btn.disabled = false;
-            btn.textContent = '发送';
+            btn.textContent = '📧 发送邮件（含 ZIP 附件）';
         }
     })
     .catch(() => {
         alert('发送失败，请重试');
         btn.disabled = false;
-        btn.textContent = '发送';
+        btn.textContent = '📧 发送邮件（含 ZIP 附件）';
     });
 }
 
