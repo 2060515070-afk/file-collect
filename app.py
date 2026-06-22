@@ -758,7 +758,14 @@ def api_get_upload_url(collection_id):
             if not type_allowed:
                 return jsonify({'error': f'文件 {fname} 的类型不被允许'}), 400
 
-        safe_name = f"{uuid.uuid4().hex[:8]}_{fname}"
+        import re as _re
+        # 去掉非 ASCII 字符（Supabase Storage 不支持中文等特殊字符）
+        ascii_name = _re.sub(r'[^a-zA-Z0-9._\-]', '_', fname)
+        # 去掉连续下划线和首尾下划线
+        ascii_name = _re.sub(r'_+', '_', ascii_name).strip('_')
+        if not ascii_name:
+            ascii_name = 'file'
+        safe_name = f"{uuid.uuid4().hex[:8]}_{ascii_name}"
         storage_path = f"{collection_id}/{person_id}/{safe_name}"
 
         signed_url = sb.get_upload_url(storage_path) if _sb_available() else None
@@ -894,7 +901,12 @@ def api_submit(collection_id):
 
         # 读取文件内容
         file_data = file.read()
-        safe_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+        import re as _re
+        ascii_name = _re.sub(r'[^a-zA-Z0-9._\-]', '_', file.filename)
+        ascii_name = _re.sub(r'_+', '_', ascii_name).strip('_')
+        if not ascii_name:
+            ascii_name = 'file'
+        safe_name = f"{uuid.uuid4().hex[:8]}_{ascii_name}"
         storage_path = f"{collection_id}/{person_id}/{safe_name}"
 
         # 上传到 Supabase Storage（优先）
