@@ -699,8 +699,11 @@ def submit_page(collection_id):
     collection = get_collection(collection_id)
     if not collection:
         return render_template('error.html', message='收集任务不存在或已过期'), 404
+    # 传递 Supabase 配置给前端（用于直传文件）
+    supabase_url = os.environ.get('SUPABASE_URL', '')
+    supabase_anon = os.environ.get('SUPABASE_ANON_KEY', '')
     return render_template('submit.html', collection=collection, file_types=FILE_TYPES,
-                           hide_admin_link=True)
+                           hide_admin_link=True, supabase_url=supabase_url, supabase_anon=supabase_anon)
 
 
 @app.route('/api/get-upload-url/<collection_id>', methods=['POST'])
