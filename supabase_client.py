@@ -67,6 +67,7 @@ def get_all_collections():
             'emailed': row.get('emailed', False),
             'emailed_at': row.get('emailed_at'),
             'auto_email': row.get('auto_email', False),
+            'zip_name': row.get('zip_name', ''),
         }
     return collections
 
@@ -86,6 +87,7 @@ def save_collection(collection):
         'emailed': collection.get('emailed', False),
         'emailed_at': collection.get('emailed_at'),
         'auto_email': collection.get('auto_email', False),
+        'zip_name': collection.get('zip_name', ''),
     }
     # 先尝试 insert，如果冲突则 update
     result = _request('POST', TABLE_NAME, row)

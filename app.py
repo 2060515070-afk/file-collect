@@ -145,6 +145,7 @@ def get_collection(collection_id):
                     'emailed': row.get('emailed', False),
                     'emailed_at': row.get('emailed_at'),
                     'auto_email': row.get('auto_email', False),
+                    'zip_name': row.get('zip_name', ''),
                 }
         except Exception as e:
             print(f'[get_collection] Supabase error: {e}')
@@ -295,7 +296,7 @@ def check_and_auto_email(collection_id):
         f"📦 文件收集完成 - {collection['title']}",
         html_body,
         zip_path,
-        f"{collection['title']}_全部文件.zip"
+        collection.get('zip_name') or f"{collection['title']}_全部文件" + '.zip'
     )
 
     if success:
@@ -453,6 +454,7 @@ def admin_create():
         max_files = int(request.form.get('max_files', 10))
         max_size_mb = int(request.form.get('max_size_mb', 50))
         auto_email = bool(request.form.get('auto_email'))
+        zip_name = request.form.get('zip_name', '').strip()
 
         if not title:
             flash('请输入收集标题', 'error')
@@ -489,6 +491,7 @@ def admin_create():
             'emailed': False,
             'emailed_at': None,
             'auto_email': auto_email,
+            'zip_name': zip_name,
         }
 
         data = load_data()
@@ -625,7 +628,7 @@ def api_send_email(collection_id):
         f"📦 文件收集 - {collection['title']}",
         html_body,
         zip_path,
-        f"{collection['title']}_全部文件.zip"
+        collection.get('zip_name') or f"{collection['title']}_全部文件" + '.zip'
     )
 
     if os.path.exists(zip_path):
@@ -650,7 +653,7 @@ def api_download_zip(collection_id):
         zip_data,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=f"{collection['title']}_全部文件.zip"
+        download_name=collection.get('zip_name') or f"{collection['title']}_全部文件" + '.zip'
     )
 
 
