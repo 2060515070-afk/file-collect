@@ -322,6 +322,38 @@ def health():
     return jsonify({'status': 'ok', 'template_dir': app.template_folder, 'exists': os.path.exists('/code/templates'), 'files': files, 'data_dir': DATA_DIR, 'cwd': os.getcwd()})
 
 
+@app.route('/debug/smtp')
+def debug_smtp():
+    """诊断 SMTP 邮件配置"""
+    result = {
+        'smtp_host': SMTP_HOST,
+        'smtp_port': SMTP_PORT,
+        'smtp_user': SMTP_USER[:10] + '...' if SMTP_USER else '(empty)',
+        'smtp_pass_set': bool(SMTP_PASS),
+        'smtp_user_raw': SMTP_USER,
+    }
+    if not SMTP_USER or not SMTP_PASS:
+        result['error'] = 'SMTP_USER or SMTP_PASS not set'
+        return jsonify(result)
+    # 测试 SMTP 连接
+    try:
+        if SMTP_PORT == 465:
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
+        else:
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+            server.starttls()
+        result['connect'] = 'ok'
+        try:
+            server.login(SMTP_USER, SMTP_PASS)
+            result['login'] = 'ok'
+        except Exception as e:
+            result['login'] = f'failed: {str(e)[:200]}'
+        server.quit()
+    except Exception as e:
+        result['connect'] = f'failed: {type(e).__name__}: {str(e)[:200]}'
+    return jsonify(result)
+
+
 @app.route('/debug/supabase')
 def debug_supabase():
     """诊断 Supabase 连接"""
