@@ -98,39 +98,52 @@ def load_data():
 
 def save_data(data):
     # Supabase: 逐个保存
+    sb_ok = True
     if _sb_available():
         for cid, col in data.get('collections', {}).items():
-            sb.save_collection(col)
+            result = sb.save_collection(col)
+            if result is None:
+                sb_ok = False
     # 同时保存到本地（备份）
+    local_ok = False
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        local_ok = True
     except Exception:
         pass  # Vercel 可能无法写文件
+    return sb_ok or local_ok
 
 
 def get_collection(collection_id):
     # 优先用 Supabase
     if _sb_available():
-        result = sb._request('GET', f'collections?id=eq.{collection_id}&select=*')
-        if result and len(result) > 0:
-            row = result[0]
-            return {
-                'id': row['id'],
-                'title': row.get('title', ''),
-                'description': row.get('description', ''),
-                'target_email': row.get('target_email', ''),
-                'allowed_types': json.loads(row.get('allowed_types', '["any"]')),
-                'people': json.loads(row.get('people', '[]')),
-                'max_files': row.get('max_files', 10),
-                'max_size_mb': row.get('max_size_mb', 50),
-                'created_at': row.get('created_at', ''),
-                'emailed': row.get('emailed', False),
-                'emailed_at': row.get('emailed_at'),
-            }
+        try:
+            result = sb._request('GET', f'collections?id=eq.{collection_id}&select=*')
+            if result and len(result) > 0:
+                row = result[0]
+                return {
+                    'id': row['id'],
+                    'title': row.get('title', ''),
+                    'description': row.get('description', ''),
+                    'target_email': row.get('target_email', ''),
+                    'allowed_types': json.loads(row.get('allowed_types', '["any"]')),
+                    'people': json.loads(row.get('people', '[]')),
+                    'max_files': row.get('max_files', 10),
+                    'max_size_mb': row.get('max_size_mb', 50),
+                    'created_at': row.get('created_at', ''),
+                    'emailed': row.get('emailed', False),
+                    'emailed_at': row.get('emailed_at'),
+                }
+        except Exception as e:
+            print(f'[get_collection] Supabase error: {e}')
     # 回退到本地
-    data = load_data()
-    return data['collections'].get(collection_id)
+    try:
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data['collections'].get(collection_id)
+    except Exception:
+        return None
 
 
 def update_collection(collection_id, updates):
@@ -372,7 +385,11 @@ def admin_create():
 
         data = load_data()
         data['collections'][collection_id] = collection
-        save_data(data)
+        save_ok = save_data(data)
+
+        if not save_ok:
+            flash('数据保存失败，请检查 Supabase 配置或稍后重试', 'error')
+            return render_template('admin_create.html', file_types=FILE_TYPES)
 
         flash('收集任务创建成功！', 'success')
         return redirect(url_for('admin_collection', collection_id=collection_id))
