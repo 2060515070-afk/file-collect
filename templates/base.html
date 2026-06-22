@@ -40,6 +40,7 @@
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 16px;
+            isolation: isolate;
         }
         .glass-strong {
             background: rgba(255,255,255,0.07);
@@ -128,6 +129,11 @@
             border-radius: 10px; width: 100%;
             transition: all 0.3s ease; font-size: 14px;
             outline: none;
+            position: relative;
+            z-index: 1;
+            pointer-events: auto;
+            -webkit-user-modify: read-write;
+            touch-action: manipulation;
         }
         .input-field:focus {
             border-color: #7c3aed;
@@ -157,6 +163,14 @@
             transition: color 0.2s; padding: 6px 12px; border-radius: 8px;
         }
         .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
+        /* 确保 glass 容器内的输入框可交互 */
+        .glass .input-field,
+        .glass textarea,
+        .glass select,
+        .glass input {
+            position: relative;
+            z-index: 2;
+        }
         /* 移动端适配 */
         @media (max-width: 640px) {
             .glass, .glass-strong { border-radius: 12px; }
