@@ -303,6 +303,37 @@ def health():
     return jsonify({'status': 'ok', 'template_dir': app.template_folder, 'exists': os.path.exists('/code/templates'), 'files': files, 'data_dir': DATA_DIR, 'cwd': os.getcwd()})
 
 
+@app.route('/debug/supabase')
+def debug_supabase():
+    """诊断 Supabase 连接"""
+    result = {
+        'sb_available': _sb_available(),
+        'supabase_url': bool(os.environ.get('SUPABASE_URL')),
+        'supabase_key_set': bool(os.environ.get('SUPABASE_KEY')),
+        'supabase_key_prefix': os.environ.get('SUPABASE_KEY', '')[:20] + '...',
+        'is_vercel': IS_VERCEL,
+        'data_dir': DATA_DIR,
+    }
+    # 测试读取
+    try:
+        cols = sb.get_all_collections() if _sb_available() else None
+        result['read_ok'] = cols is not None
+        result['read_count'] = len(cols) if cols else 0
+    except Exception as e:
+        result['read_error'] = str(e)
+    # 测试写入
+    if _sb_available():
+        try:
+            test_row = {'id': 'diag_test_001', 'title': 'diagnostic', 'description': '', 'target_email': '', 'allowed_types': '["any"]', 'people': '[]', 'max_files': 10, 'max_size_mb': 50, 'created_at': '2026-01-01T00:00:00', 'emailed': False}
+            write_result = sb._request('POST', 'collections?on_conflict=id', test_row)
+            result['write_ok'] = write_result is not None
+            if write_result is None:
+                result['write_error'] = 'returned None'
+        except Exception as e:
+            result['write_error'] = str(e)
+    return jsonify(result)
+
+
 # ── 管理员认证 ────────────────────────────────────────────────────────
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
