@@ -206,10 +206,16 @@ def create_zip(collection):
         for person in collection.get('people', []):
             if person.get('submitted') and person.get('files'):
                 for file_info in person['files']:
+                    arcname = f"{person['name']}/{file_info['original_name']}"
+                    # 优先从本地读取
                     file_path = file_info.get('path')
                     if file_path and os.path.exists(file_path):
-                        arcname = f"{person['name']}/{file_info['original_name']}"
                         zf.write(file_path, arcname)
+                    # 回退：从 Supabase Storage 下载
+                    elif file_info.get('storage_path') and _sb_available():
+                        data = sb.download_file(file_info['storage_path'])
+                        if data:
+                            zf.writestr(arcname, data)
     mem_zip.seek(0)
     return mem_zip
 
@@ -515,8 +521,12 @@ def api_delete_collection(collection_id):
     # 删除上传的文件
     for person in collection.get('people', []):
         for file_info in person.get('files', []):
+            # 删除本地文件
             if file_info.get('path') and os.path.exists(file_info['path']):
                 os.remove(file_info['path'])
+            # 删除 Supabase Storage 文件
+            if file_info.get('storage_path') and _sb_available():
+                sb.delete_file(file_info['storage_path'])
 
     # 直接从 Supabase 删除（不再全量读写）
     if _sb_available():
@@ -702,15 +712,31 @@ def api_submit(collection_id):
             if not type_allowed:
                 return jsonify({'error': f'文件 {file.filename} 的类型不被允许'}), 400
 
-        # 保存文件
+        # 读取文件内容
+        file_data = file.read()
         safe_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
-        file_path = os.path.join(upload_dir, safe_name)
-        file.save(file_path)
+        storage_path = f"{collection_id}/{person_id}/{safe_name}"
+
+        # 上传到 Supabase Storage（优先）
+        storage_ok = False
+        if _sb_available():
+            content_type = file.content_type or 'application/octet-stream'
+            storage_ok = sb.upload_file(file_data, storage_path, content_type)
+
+        # 回退：保存到本地
+        local_path = None
+        if not storage_ok:
+            upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], collection_id, person_id)
+            os.makedirs(upload_dir, exist_ok=True)
+            local_path = os.path.join(upload_dir, safe_name)
+            with open(local_path, 'wb') as f:
+                f.write(file_data)
 
         uploaded_files.append({
             'original_name': file.filename,
             'saved_name': safe_name,
-            'path': file_path,
+            'storage_path': storage_path if storage_ok else '',
+            'path': local_path or '',
             'size': file_size,
             'uploaded_at': datetime.now().isoformat()
         })
