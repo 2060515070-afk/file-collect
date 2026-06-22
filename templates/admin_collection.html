@@ -80,7 +80,7 @@
             <a href="/api/collection/{{ collection.id }}/download-zip" class="btn-ghost w-full block text-center">
                 📦 下载 ZIP 压缩包
             </a>
-            <button onclick="deleteCollection()" class="btn-danger w-full">
+            <button onclick="deleteCollection()" class="btn-danger w-full" id="deleteBtn">
                 🗑️ 删除此任务
             </button>
         </div>
@@ -220,13 +220,23 @@ function resetPerson(personId, name) {
 
 function deleteCollection() {
     if (!confirm('确定要删除「{{ collection.title }}」吗？\n此操作不可恢复，所有已上传的文件将被删除。')) return;
+    const btn = document.getElementById('deleteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 删除中...';
+    btn.style.opacity = '0.7';
     fetch('/api/collection/{{ collection.id }}/delete', { method: 'DELETE' })
         .then(r => r.json())
         .then(data => {
             if (data.success) window.location.href = '{{ url_for("admin_dashboard") }}';
-            else alert(data.error || '删除失败');
+            else { alert(data.error || '删除失败'); resetBtn(); }
         })
-        .catch(() => alert('删除失败，请重试'));
+        .catch(() => { alert('删除失败，请重试'); resetBtn(); });
+}
+function resetBtn() {
+    const btn = document.getElementById('deleteBtn');
+    btn.disabled = false;
+    btn.innerHTML = '🗑️ 删除此任务';
+    btn.style.opacity = '';
 }
 </script>
 {% endblock %}

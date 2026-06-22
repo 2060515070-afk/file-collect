@@ -518,14 +518,15 @@ def api_delete_collection(collection_id):
             if file_info.get('path') and os.path.exists(file_info['path']):
                 os.remove(file_info['path'])
 
-    data = load_data()
-    if collection_id in data['collections']:
-        del data['collections'][collection_id]
-        save_data(data)
-
-    # 从 Supabase 直接删除
+    # 直接从 Supabase 删除（不再全量读写）
     if _sb_available():
         sb.delete_collection(collection_id)
+    else:
+        # 本地文件回退
+        data = load_data()
+        if collection_id in data['collections']:
+            del data['collections'][collection_id]
+            save_data(data)
 
     return jsonify({'success': True})
 
