@@ -11,6 +11,8 @@ import zipfile
 import io
 import hashlib
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
