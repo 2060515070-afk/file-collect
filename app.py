@@ -177,6 +177,16 @@ def admin_required(f):
     return decorated
 
 
+def get_zip_name(collection):
+    """获取 ZIP 文件名，确保有 .zip 后缀"""
+    name = collection.get('zip_name', '').strip()
+    if not name:
+        name = f"{collection['title']}_全部文件"
+    if not name.lower().endswith('.zip'):
+        name += '.zip'
+    return name
+
+
 # ── 邮件发送（Resend API）──────────────────────────────────────────
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 
@@ -296,7 +306,7 @@ def check_and_auto_email(collection_id):
         f"📦 文件收集完成 - {collection['title']}",
         html_body,
         zip_path,
-        collection.get('zip_name') or f"{collection['title']}_全部文件" + '.zip'
+        get_zip_name(collection)
     )
 
     if success:
@@ -628,7 +638,7 @@ def api_send_email(collection_id):
         f"📦 文件收集 - {collection['title']}",
         html_body,
         zip_path,
-        collection.get('zip_name') or f"{collection['title']}_全部文件" + '.zip'
+        get_zip_name(collection)
     )
 
     if os.path.exists(zip_path):
@@ -653,7 +663,7 @@ def api_download_zip(collection_id):
         zip_data,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=collection.get('zip_name') or f"{collection['title']}_全部文件" + '.zip'
+        download_name=get_zip_name(collection)
     )
 
 
