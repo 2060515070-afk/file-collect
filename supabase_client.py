@@ -167,8 +167,10 @@ def get_upload_url(storage_path):
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-            signed_url = data.get('signedURL', '')
-            return f"{SUPABASE_URL}{signed_url}" if signed_url else None
+            path = data.get('url', '')
+            if path:
+                return f"{SUPABASE_URL}/storage/v1{path}"
+            return None
     except Exception as e:
         print(f"[storage] get_upload_url error: {e}")
         return None
