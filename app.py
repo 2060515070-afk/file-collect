@@ -174,36 +174,38 @@ def admin_required(f):
     return decorated
 
 
-# ── 邮件发送 ──────────────────────────────────────────────────────────
+# ── 邮件发送（Resend API）──────────────────────────────────────────
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+
 def send_email(to_email, subject, body, attachment_path=None, attachment_name=None):
-    if not SMTP_USER or not SMTP_PASS:
-        return False, 'SMTP 未配置，请设置环境变量 SMTP_USER 和 SMTP_PASS'
-
+    import base64 as b64
+    if not RESEND_API_KEY:
+        return False, 'RESEND_API_KEY 未配置'
     try:
-        msg = MIMEMultipart()
-        msg['From'] = SMTP_USER
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'html', 'utf-8'))
-
+        payload = {
+            'from': 'FileCollect <onboarding@resend.dev>',
+            'to': [to_email],
+            'subject': subject,
+            'html': body,
+        }
         if attachment_path and os.path.exists(attachment_path):
             with open(attachment_path, 'rb') as f:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f'attachment; filename="{attachment_name or "files.zip"}"')
-            msg.attach(part)
-
-        if SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
-        else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-            server.starttls()
-
-        server.login(SMTP_USER, SMTP_PASS)
-        server.send_message(msg)
-        server.quit()
-        return True, '邮件发送成功'
+                file_data = f.read()
+            payload['attachments'] = [{
+                'filename': attachment_name or 'files.zip',
+                'content': b64.b64encode(file_data).decode('utf-8'),
+            }]
+        req = urllib.request.Request(
+            'https://api.resend.com/emails',
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            return True, f'邮件发送成功'
+    except urllib.error.HTTPError as e:
+        return False, f'邮件发送失败 HTTP {e.code}: {e.read().decode("utf-8", errors="replace")[:300]}'
     except Exception as e:
         return False, f'邮件发送失败: {str(e)}'
 
@@ -324,33 +326,31 @@ def health():
 
 @app.route('/debug/smtp')
 def debug_smtp():
-    """诊断 SMTP 邮件配置"""
+    """诊断邮件配置"""
     result = {
-        'smtp_host': SMTP_HOST,
-        'smtp_port': SMTP_PORT,
-        'smtp_user': SMTP_USER[:10] + '...' if SMTP_USER else '(empty)',
-        'smtp_pass_set': bool(SMTP_PASS),
-        'smtp_user_raw': SMTP_USER,
+        'resend_key_set': bool(RESEND_API_KEY),
+        'resend_key_prefix': RESEND_API_KEY[:10] + '...' if RESEND_API_KEY else '(empty)',
     }
-    if not SMTP_USER or not SMTP_PASS:
-        result['error'] = 'SMTP_USER or SMTP_PASS not set'
+    if not RESEND_API_KEY:
+        result['error'] = 'RESEND_API_KEY not set'
         return jsonify(result)
-    # 测试 SMTP 连接
+    # 测试 Resend API
     try:
-        if SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
-        else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
-            server.starttls()
-        result['connect'] = 'ok'
-        try:
-            server.login(SMTP_USER, SMTP_PASS)
-            result['login'] = 'ok'
-        except Exception as e:
-            result['login'] = f'failed: {str(e)[:200]}'
-        server.quit()
+        req = urllib.request.Request(
+            'https://api.resend.com/emails',
+            data=json.dumps({'from': 'FileCollect <onboarding@resend.dev>', 'to': ['delivered@resend.dev'], 'subject': 'Test', 'html': '<p>test</p>'}).encode('utf-8'),
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            result['test_send'] = 'ok'
+            result['test_id'] = data.get('id', '')
+    except urllib.error.HTTPError as e:
+        result['test_send'] = f'failed HTTP {e.code}'
+        result['test_detail'] = e.read().decode('utf-8', errors='replace')[:300]
     except Exception as e:
-        result['connect'] = f'failed: {type(e).__name__}: {str(e)[:200]}'
+        result['test_send'] = f'failed: {type(e).__name__}: {str(e)[:200]}'
     return jsonify(result)
 
 
