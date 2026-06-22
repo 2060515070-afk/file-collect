@@ -61,6 +61,14 @@ DATA_FILE = os.path.join(DATA_DIR, 'data.json')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
+
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 # ── 文件类型配置 ──────────────────────────────────────────────────────
 FILE_TYPES = {
     'pdf': {'name': 'PDF', 'ext': ['.pdf'], 'icon': '📄', 'color': '#ef4444'},
