@@ -83,7 +83,7 @@ def save_collection(collection):
         'emailed': collection.get('emailed', False),
         'emailed_at': collection.get('emailed_at'),
     }
-    return _request('POST', f'{TABLE_NAME}?onconflict=id', row)
+    return _request('POST', f'{TABLE_NAME}?on_conflict=id', row)
 
 
 def delete_collection(collection_id):
