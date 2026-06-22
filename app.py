@@ -205,7 +205,7 @@ def send_email(to_email, subject, body, attachment_path=None, attachment_name=No
         return False, 'resend 包未安装'
     try:
         params = {
-            'from': 'FileCollect <onboarding@resend.dev>',
+            'from': 'FileCollect <noreply@mail.565241.xyz>',
             'to': [to_email],
             'subject': subject,
             'html': body,
