@@ -97,8 +97,19 @@
         <div id="successMsg" class="hidden text-center py-8">
             <div class="text-5xl mb-4 animate-bounce">🎉</div>
             <h2 class="text-2xl font-bold text-white mb-2">提交成功！</h2>
-            <p class="text-slate-400 mb-6">您的文件已成功上传，感谢您的配合。</p>
+            <p class="text-slate-400 mb-6" id="farewellMsg">您的文件已成功上传，感谢您的配合。</p>
             <button onclick="location.reload()" class="btn-ghost">继续提交（其他人）</button>
+        </div>
+
+        <!-- 提交进度弹窗 -->
+        <div class="modal-overlay" id="uploadModal">
+            <div class="modal-box">
+                <div class="modal-icon">📤</div>
+                <div class="modal-title">正在上传文件</div>
+                <div class="modal-desc" id="uploadStatus">准备中...</div>
+                <div class="progress-bar"><div class="progress-fill" id="uploadProgressFill"></div></div>
+                <div class="progress-text" id="uploadProgressText">0%</div>
+            </div>
         </div>
     </div>
 </div>
@@ -208,26 +219,75 @@ function handleSubmit(e) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '⏳ 上传中...';
 
-    fetch('/api/submit/{{ collection.id }}', {
-        method: 'POST',
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('submitForm').classList.add('hidden');
-            document.getElementById('successMsg').classList.remove('hidden');
-        } else {
-            alert(data.error || '提交失败');
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '📤 提交文件';
+    // 显示进度弹窗
+    document.getElementById('uploadModal').classList.add('active');
+    const fill = document.getElementById('uploadProgressFill');
+    const progressText = document.getElementById('uploadProgressText');
+    const statusText = document.getElementById('uploadStatus');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/submit/{{ collection.id }}');
+
+    xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable) {
+            const pct = Math.round(e.loaded / e.total * 100);
+            fill.style.width = pct + '%';
+            progressText.textContent = pct + '%';
+            statusText.textContent = pct < 100 ? `正在上传 ${selectedFiles.length} 个文件...` : '服务器处理中...';
         }
-    })
-    .catch(() => {
-        alert('提交失败，请检查网络后重试');
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '📤 提交文件';
     });
+
+    xhr.addEventListener('load', () => {
+        document.getElementById('uploadModal').classList.remove('active');
+        try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.success) {
+                document.getElementById('submitForm').classList.add('hidden');
+                document.getElementById('farewellMsg').textContent = getFarewell();
+                document.getElementById('successMsg').classList.remove('hidden');
+            } else {
+                alert(data.error || '提交失败');
+                resetSubmitBtn();
+            }
+        } catch {
+            alert('提交失败，请重试');
+            resetSubmitBtn();
+        }
+    });
+
+    xhr.addEventListener('error', () => {
+        document.getElementById('uploadModal').classList.remove('active');
+        alert('网络错误，请检查连接后重试');
+        resetSubmitBtn();
+    });
+
+    xhr.send(formData);
+}
+
+function resetSubmitBtn() {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '📤 提交文件';
+}
+
+function getFarewell() {
+    const msgs = [
+        '感谢你的配合，世界因你而更美好 ✨',
+        '文件已安全送达，你可以安心去摸鱼了 🐟',
+        '提交成功！今天的你也是最棒的 💪',
+        '一切顺利！去喝杯咖啡休息一下吧 ☕',
+        '完美提交！效率之王非你莫属 👑',
+        '文件已到位，感谢大佬的支持 🙏',
+        '搞定了！你是最靓的仔 ✌️',
+        '提交完毕，剩下的交给时间吧 ⏳',
+        '干得漂亮！又完成了一件事 🎯',
+        '文件已入库，感谢你的速度与激情 🏎️',
+        '成功！你让这个世界多了一份秩序 📋',
+        '提交完成，愿你今天心情像这个页面一样顺畅 🌈',
+        '文件已到位，深呼吸，继续前行 🍃',
+        '完美！你的效率让服务器都为你鼓掌 👏',
+        '搞定了，去享受生活吧，你值得 🌟',
+    ];
+    return msgs[Math.floor(Math.random() * msgs.length)];
 }
 </script>
 {% endblock %}

@@ -121,6 +121,67 @@
             margin-right: 6px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* 自定义弹窗 */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 9999;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        .modal-box {
+            background: #1a1a2e;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 400px; width: 90%;
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-box { transform: scale(1); }
+        .modal-icon { font-size: 48px; margin-bottom: 16px; }
+        .modal-title { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+        .modal-desc { font-size: 14px; color: #94a3b8; margin-bottom: 24px; line-height: 1.6; }
+        .modal-actions { display: flex; gap: 12px; justify-content: center; }
+        .modal-btn {
+            padding: 10px 28px; border-radius: 12px;
+            font-weight: 600; font-size: 14px; cursor: pointer;
+            border: none; transition: all 0.3s ease;
+        }
+        .modal-btn-cancel {
+            background: rgba(255,255,255,0.08);
+            color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1);
+        }
+        .modal-btn-cancel:hover { background: rgba(255,255,255,0.15); }
+        .modal-btn-confirm {
+            background: linear-gradient(135deg, #dc2626, #ef4444);
+            color: #fff;
+        }
+        .modal-btn-confirm:hover {
+            box-shadow: 0 0 20px rgba(220,38,38,0.4);
+            transform: translateY(-1px);
+        }
+        /* 进度条 */
+        .progress-bar {
+            width: 100%; height: 6px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 16px;
+        }
+        .progress-fill {
+            height: 100%; border-radius: 3px;
+            background: linear-gradient(90deg, #7c3aed, #3b82f6);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-text {
+            font-size: 12px; color: #64748b;
+            margin-top: 8px; text-align: center;
+        }
         /* 输入框 */
         .input-field {
             background: rgba(255,255,255,0.06);

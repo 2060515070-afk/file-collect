@@ -163,6 +163,26 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- 删除确认弹窗 -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-box">
+        <div class="modal-icon">⚠️</div>
+        <div class="modal-title">确认删除</div>
+        <div class="modal-desc">
+            确定要删除「{{ collection.title }}」吗？<br>
+            <span class="text-red-400">此操作不可恢复，所有已上传的文件将被永久删除。</span>
+        </div>
+        <div id="deleteProgress" class="hidden">
+            <div class="progress-bar"><div class="progress-fill" id="deleteProgressFill"></div></div>
+            <div class="progress-text" id="deleteProgressText">正在删除...</div>
+        </div>
+        <div class="modal-actions" id="deleteActions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeDeleteModal()">取消</button>
+            <button class="modal-btn modal-btn-confirm" id="confirmDeleteBtn" onclick="confirmDelete()">确认删除</button>
+        </div>
+    </div>
+</div>
+
 <script>
 function copyLink() {
     const input = document.getElementById('shareUrl');
@@ -219,18 +239,40 @@ function resetPerson(personId, name) {
 }
 
 function deleteCollection() {
-    if (!confirm('确定要删除「{{ collection.title }}」吗？\n此操作不可恢复，所有已上传的文件将被删除。')) return;
-    const btn = document.getElementById('deleteBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> 删除中...';
-    btn.style.opacity = '0.7';
+    document.getElementById('deleteModal').classList.add('active');
+}
+function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('active');
+    document.getElementById('deleteProgress').classList.add('hidden');
+    document.getElementById('deleteActions').classList.remove('hidden');
+}
+function confirmDelete() {
+    document.getElementById('confirmDeleteBtn').disabled = true;
+    document.getElementById('confirmDeleteBtn').textContent = '删除中...';
+    document.getElementById('deleteProgress').classList.remove('hidden');
+    // 模拟进度
+    let progress = 0;
+    const fill = document.getElementById('deleteProgressFill');
+    const text = document.getElementById('deleteProgressText');
+    const interval = setInterval(() => {
+        progress = Math.min(progress + Math.random() * 30, 90);
+        fill.style.width = progress + '%';
+        text.textContent = `正在删除... ${Math.round(progress)}%`;
+    }, 200);
     fetch('/api/collection/{{ collection.id }}/delete', { method: 'DELETE' })
         .then(r => r.json())
         .then(data => {
-            if (data.success) window.location.href = '{{ url_for("admin_dashboard") }}';
-            else { alert(data.error || '删除失败'); resetBtn(); }
+            clearInterval(interval);
+            fill.style.width = '100%';
+            text.textContent = '删除成功！正在跳转...';
+            if (data.success) setTimeout(() => window.location.href = '{{ url_for("admin_dashboard") }}', 600);
+            else { alert(data.error || '删除失败'); closeDeleteModal(); }
         })
-        .catch(() => { alert('删除失败，请重试'); resetBtn(); });
+        .catch(() => {
+            clearInterval(interval);
+            alert('删除失败，请重试');
+            closeDeleteModal();
+        });
 }
 function resetBtn() {
     const btn = document.getElementById('deleteBtn');
