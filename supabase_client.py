@@ -20,6 +20,7 @@ def is_configured():
 def _request(method, path, data=None):
     """发送 REST 请求到 Supabase"""
     if not is_configured():
+        print('[supabase] Not configured')
         return None
 
     url = f"{SUPABASE_URL}/rest/v1/{path}"
@@ -34,14 +35,15 @@ def _request(method, path, data=None):
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode('utf-8')
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
-        print(f"[supabase] HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}")
+        err_body = e.read().decode('utf-8', errors='replace')[:500]
+        print(f"[supabase] HTTP {e.code} on {method} {path}: {err_body}")
         return None
     except Exception as e:
-        print(f"[supabase] Error: {e}")
+        print(f"[supabase] Error on {method} {path}: {type(e).__name__}: {e}")
         return None
 
 
@@ -83,7 +85,12 @@ def save_collection(collection):
         'emailed': collection.get('emailed', False),
         'emailed_at': collection.get('emailed_at'),
     }
-    return _request('POST', f'{TABLE_NAME}?on_conflict=id', row)
+    # 先尝试 insert，如果冲突则 update
+    result = _request('POST', TABLE_NAME, row)
+    if result is None:
+        # 可能是已存在，尝试 upsert
+        result = _request('PATCH', f'{TABLE_NAME}?id=eq.{collection["id"]}', row)
+    return result
 
 
 def delete_collection(collection_id):
