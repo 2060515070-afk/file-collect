@@ -306,6 +306,7 @@ def health():
 @app.route('/debug/supabase')
 def debug_supabase():
     """诊断 Supabase 连接"""
+    import urllib.request, urllib.error
     result = {
         'sb_available': _sb_available(),
         'supabase_url': bool(os.environ.get('SUPABASE_URL')),
@@ -321,16 +322,29 @@ def debug_supabase():
         result['read_count'] = len(cols) if cols else 0
     except Exception as e:
         result['read_error'] = str(e)
-    # 测试写入
+    # 测试写入 - 直接用 urllib 捕获详细错误
     if _sb_available():
+        url = f"{os.environ.get('SUPABASE_URL')}/rest/v1/collections"
+        test_row = {'id': 'diag_test_001', 'title': 'diagnostic', 'description': '', 'target_email': '', 'allowed_types': '["any"]', 'people': '[]', 'max_files': 10, 'max_size_mb': 50, 'created_at': '2026-01-01T00:00:00', 'emailed': False}
+        headers = {
+            'apikey': os.environ.get('SUPABASE_KEY', ''),
+            'Authorization': f"Bearer {os.environ.get('SUPABASE_KEY', '')}",
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+        }
+        body = json.dumps(test_row).encode('utf-8')
+        req = urllib.request.Request(url, data=body, headers=headers, method='POST')
         try:
-            test_row = {'id': 'diag_test_001', 'title': 'diagnostic', 'description': '', 'target_email': '', 'allowed_types': '["any"]', 'people': '[]', 'max_files': 10, 'max_size_mb': 50, 'created_at': '2026-01-01T00:00:00', 'emailed': False}
-            write_result = sb._request('POST', 'collections?on_conflict=id', test_row)
-            result['write_ok'] = write_result is not None
-            if write_result is None:
-                result['write_error'] = 'returned None'
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result['write_ok'] = True
+                result['write_status'] = resp.status
+        except urllib.error.HTTPError as e:
+            result['write_ok'] = False
+            result['write_error'] = f'HTTP {e.code}'
+            result['write_detail'] = e.read().decode('utf-8', errors='replace')[:500]
         except Exception as e:
-            result['write_error'] = str(e)
+            result['write_ok'] = False
+            result['write_error'] = f'{type(e).__name__}: {str(e)[:300]}'
     return jsonify(result)
 
 
