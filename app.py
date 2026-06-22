@@ -519,8 +519,14 @@ def api_delete_collection(collection_id):
                 os.remove(file_info['path'])
 
     data = load_data()
-    del data['collections'][collection_id]
-    save_data(data)
+    if collection_id in data['collections']:
+        del data['collections'][collection_id]
+        save_data(data)
+
+    # 从 Supabase 直接删除
+    if _sb_available():
+        sb.delete_collection(collection_id)
+
     return jsonify({'success': True})
 
 
