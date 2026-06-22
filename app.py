@@ -142,6 +142,7 @@ def get_collection(collection_id):
                     'created_at': row.get('created_at', ''),
                     'emailed': row.get('emailed', False),
                     'emailed_at': row.get('emailed_at'),
+                    'auto_email': row.get('auto_email', False),
                 }
         except Exception as e:
             print(f'[get_collection] Supabase error: {e}')
@@ -241,6 +242,10 @@ def check_and_auto_email(collection_id):
     """检查是否所有人都已提交，如果是则自动发送邮件"""
     collection = get_collection(collection_id)
     if not collection or collection.get('emailed'):
+        return
+
+    # 检查是否开启了自动发邮件
+    if not collection.get('auto_email'):
         return
 
     people = collection.get('people', [])
@@ -417,6 +422,7 @@ def admin_create():
         people_raw = request.form.get('people', '').strip()
         max_files = int(request.form.get('max_files', 10))
         max_size_mb = int(request.form.get('max_size_mb', 50))
+        auto_email = bool(request.form.get('auto_email'))
 
         if not title:
             flash('请输入收集标题', 'error')
@@ -452,6 +458,7 @@ def admin_create():
             'created_at': datetime.now().isoformat(),
             'emailed': False,
             'emailed_at': None,
+            'auto_email': auto_email,
         }
 
         data = load_data()

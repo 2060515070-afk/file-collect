@@ -44,8 +44,21 @@
             <div class="mb-2">
                 <label class="block text-sm text-slate-400 mb-2">目标邮箱</label>
                 <input type="email" name="target_email" class="input-field"
-                       placeholder="收集完成后自动发送到此邮箱（可选）">
-                <p class="text-xs text-slate-500 mt-1">全员提交后系统将自动把所有文件打包发送到此邮箱</p>
+                       placeholder="收集完成后发送到此邮箱（可选）">
+            </div>
+
+            <div class="flex items-center justify-between mt-4 p-3 glass">
+                <div>
+                    <div class="text-sm text-white font-medium">📧 自动发送邮件</div>
+                    <div class="text-xs text-slate-500">全员提交后自动打包发送到目标邮箱</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="auto_email" value="1" class="sr-only peer" checked id="autoEmailToggle">
+                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:bg-violet-600 transition-colors
+                                after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
+                                peer-checked:after:translate-x-full"></div>
+                </label>
             </div>
         </div>
 
