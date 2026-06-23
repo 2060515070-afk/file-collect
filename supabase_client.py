@@ -107,22 +107,50 @@ STORAGE_BUCKET = 'file-collect'
 
 
 def ensure_bucket():
-    """确保存储桶存在"""
-    url = f"{SUPABASE_URL}/storage/v1/bucket"
+    """确保存储桶存在，开启大文件 TUS 续传"""
+    # 先检查桶是否已存在
+    url = f"{SUPABASE_URL}/storage/v1/bucket/{STORAGE_BUCKET}"
     headers = {
         'apikey': SUPABASE_KEY,
         'Authorization': f'Bearer {SUPABASE_KEY}',
         'Content-Type': 'application/json',
     }
+    req = urllib.request.Request(url, headers=headers, method='GET')
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        # 桶已存在，尝试更新 TUS 设置
+        update_url = f"{SUPABASE_URL}/storage/v1/bucket/{STORAGE_BUCKET}"
+        body = json.dumps({
+            'fileSizeLimit': 524288000,  # 500MB
+            'allowedMimeTypes': None,    # 允许所有类型
+        }).encode('utf-8')
+        req2 = urllib.request.Request(update_url, data=body, headers=headers, method='PUT')
+        try:
+            urllib.request.urlopen(req2, timeout=10)
+        except Exception:
+            pass  # 更新失败不影响使用
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            print(f"[storage] bucket check error: {e.code}")
+            return False
+    except Exception as e:
+        print(f"[storage] bucket check error: {e}")
+        return False
+
+    # 桶不存在，创建并开启 TUS
+    create_url = f"{SUPABASE_URL}/storage/v1/bucket"
     body = json.dumps({
         'id': STORAGE_BUCKET,
         'name': STORAGE_BUCKET,
         'public': False,
         'fileSizeLimit': 524288000,  # 500MB
+        'allowedMimeTypes': None,    # 允许所有类型
     }).encode('utf-8')
-    req = urllib.request.Request(url, data=body, headers=headers, method='POST')
+    req = urllib.request.Request(create_url, data=body, headers=headers, method='POST')
     try:
         urllib.request.urlopen(req, timeout=10)
+        return True
     except urllib.error.HTTPError as e:
         if e.code == 409:  # 已存在
             return True
@@ -140,9 +168,12 @@ def upload_file(file_data, storage_path, content_type='application/octet-stream'
         'Authorization': f'Bearer {SUPABASE_KEY}',
         'Content-Type': content_type,
     }
+    # 根据文件大小动态调整超时：基础 60s + 每 MB 额外 2s，最大 600s
+    file_mb = len(file_data) / (1024 * 1024)
+    timeout = min(60 + int(file_mb * 2), 600)
     req = urllib.request.Request(url, data=file_data, headers=headers, method='POST')
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return True
     except urllib.error.HTTPError as e:
         err = e.read().decode('utf-8', errors='replace')[:300]

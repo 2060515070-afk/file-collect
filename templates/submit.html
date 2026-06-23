@@ -4,6 +4,7 @@
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -124,6 +125,12 @@
 const _supabase = supabase.createClient('{{ supabase_url }}', '{{ supabase_anon }}');
 let selectedFiles = [];
 
+function formatBytes(bytes) {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1024).toFixed(1) + ' KB';
+}
+
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const submitBtn = document.getElementById('submitBtn');
@@ -237,32 +244,73 @@ async function handleSubmit(e) {
         const urlData = await urlResp.json();
         if (!urlData.success) { throw new Error(urlData.error || '准备上传失败'); }
 
-        // 第二步：用 Supabase SDK 直传文件
+        // 第二步：上传文件（大文件用 TUS 分片续传，小文件直接上传）
         const uploadedFiles = [];
         const totalSize = selectedFiles.reduce((s, f) => s + f.size, 0);
         let uploadedSize = 0;
+        const TUS_THRESHOLD = 20 * 1024 * 1024; // 20MB 以上走 TUS
 
         for (let i = 0; i < selectedFiles.length; i++) {
             const file = selectedFiles[i];
             const uploadInfo = urlData.uploads[i];
 
-            statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}`;
-
-            const { data, error } = await _supabase.storage
-                .from('file-collect')
-                .upload(uploadInfo.storage_path, file, {
-                    contentType: file.type || 'application/octet-stream',
-                    upsert: false
+            if (file.size > TUS_THRESHOLD) {
+                // ── 大文件：TUS 分片续传 ──
+                await new Promise((resolve, reject) => {
+                    const upload = new tus.Upload(file, {
+                        endpoint: '{{ supabase_url }}/storage/v1/upload/resumable',
+                        retryDelays: [0, 3000, 5000, 10000],
+                        chunkSize: 6 * 1024 * 1024, // 6MB 每片
+                        metadata: {
+                            bucketName: 'file-collect',
+                            objectName: uploadInfo.storage_path,
+                            contentType: file.type || 'application/octet-stream',
+                        },
+                        headers: {
+                            authorization: 'Bearer {{ supabase_anon }}',
+                            apikey: '{{ supabase_anon }}',
+                        },
+                        onError: function(err) {
+                            reject(new Error(`文件 ${file.name} 上传失败: ${err.message}`));
+                        },
+                        onProgress: function(bytesUploaded, bytesTotal) {
+                            const currentUploaded = uploadedSize + bytesUploaded;
+                            const pct = Math.min(Math.round(currentUploaded / totalSize * 100), 99);
+                            fill.style.width = pct + '%';
+                            const chunkInfo = ` [${formatBytes(bytesUploaded)}/${formatBytes(bytesTotal)}]`;
+                            statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}${chunkInfo}`;
+                            progressText.textContent = `${pct}% (${formatBytes(currentUploaded)} / ${formatBytes(totalSize)})`;
+                        },
+                        onSuccess: function() {
+                            uploadedSize += file.size;
+                            resolve();
+                        },
+                    });
+                    // 检查是否有之前未完成的上传
+                    upload.findPreviousUploads().then(function(previousUploads) {
+                        if (previousUploads.length) {
+                            upload.resumeFromPreviousUpload(previousUploads[0]);
+                        }
+                        upload.start();
+                    });
                 });
-
-            if (error) {
-                throw new Error(`文件 ${file.name} 上传失败: ${error.message}`);
+            } else {
+                // ── 小文件：直接上传 ──
+                statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}`;
+                const { error } = await _supabase.storage
+                    .from('file-collect')
+                    .upload(uploadInfo.storage_path, file, {
+                        contentType: file.type || 'application/octet-stream',
+                        upsert: false
+                    });
+                if (error) {
+                    throw new Error(`文件 ${file.name} 上传失败: ${error.message}`);
+                }
+                uploadedSize += file.size;
+                const pct = Math.round(uploadedSize / totalSize * 100);
+                fill.style.width = pct + '%';
+                progressText.textContent = `${pct}% (${formatBytes(uploadedSize)} / ${formatBytes(totalSize)})`;
             }
-
-            uploadedSize += file.size;
-            const pct = Math.round(uploadedSize / totalSize * 100);
-            fill.style.width = pct + '%';
-            progressText.textContent = pct + '%';
 
             uploadedFiles.push({
                 original_name: file.name,
