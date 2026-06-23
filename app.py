@@ -225,13 +225,25 @@ def send_email(to_email, subject, body, attachment_path=None, attachment_name=No
 
 
 def create_zip(collection):
-    """将所有已提交的文件打包成 ZIP"""
+    """将所有已提交的文件打包成 ZIP（全部平铺在同一层，不按人名分文件夹）"""
     mem_zip = io.BytesIO()
+    used_names = set()
     with zipfile.ZipFile(mem_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
         for person in collection.get('people', []):
             if person.get('submitted') and person.get('files'):
                 for file_info in person['files']:
-                    arcname = f"{person['name']}/{file_info['original_name']}"
+                    original = file_info['original_name']
+                    # 重名处理：加人名前缀
+                    if original in used_names:
+                        name, ext = os.path.splitext(original)
+                        arcname = f"{person['name']}_{name}{ext}"
+                    else:
+                        arcname = original
+                    # 确保不重名
+                    while arcname in used_names:
+                        name, ext = os.path.splitext(arcname)
+                        arcname = f"{name}_1{ext}"
+                    used_names.add(arcname)
                     # 优先从本地读取
                     file_path = file_info.get('path')
                     if file_path and os.path.exists(file_path):
