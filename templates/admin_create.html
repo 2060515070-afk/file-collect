@@ -123,11 +123,22 @@
         <!-- 提交按钮 -->
         <div class="flex justify-end gap-3">
             <a href="{{ url_for('admin_dashboard') }}" class="btn-ghost">取消</a>
-            <button type="submit" class="btn-primary px-8 py-3 text-base">
+            <button type="submit" class="btn-primary px-8 py-3 text-base" id="createBtn">
                 🚀 创建收集任务
             </button>
         </div>
     </form>
+
+    <!-- 加载弹窗 -->
+    <div class="modal-overlay" id="loadingModal">
+        <div class="modal-box">
+            <div class="modal-icon">⏳</div>
+            <div class="modal-title">正在创建收集任务</div>
+            <div class="modal-desc" id="loadingStatus">保存数据中...</div>
+            <div class="progress-bar"><div class="progress-fill" id="loadingFill" style="width:0%"></div></div>
+            <div class="progress-text" id="loadingText">0%</div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -142,5 +153,74 @@ function updateCount() {
 }
 peopleTA.addEventListener('input', updateCount);
 updateCount();
+
+// AJAX 提交 + 进度条
+const form = document.querySelector('form');
+const createBtn = document.getElementById('createBtn');
+const loadingModal = document.getElementById('loadingModal');
+const loadingFill = document.getElementById('loadingFill');
+const loadingText = document.getElementById('loadingText');
+const loadingStatus = document.getElementById('loadingStatus');
+
+form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    createBtn.disabled = true;
+    createBtn.innerHTML = '⏳ 创建中...';
+    loadingModal.classList.add('active');
+
+    // 模拟进度动画
+    let progress = 0;
+    const steps = [
+        { pct: 20, text: '解析表单数据...', time: 300 },
+        { pct: 40, text: '生成收集任务...', time: 500 },
+        { pct: 60, text: '保存到数据库...', time: 800 },
+        { pct: 80, text: '写入备份...', time: 400 },
+        { pct: 95, text: '即将跳转...', time: 300 },
+    ];
+
+    let stepIdx = 0;
+    const timer = setInterval(() => {
+        if (stepIdx < steps.length) {
+            const step = steps[stepIdx];
+            loadingFill.style.width = step.pct + '%';
+            loadingText.textContent = step.pct + '%';
+            loadingStatus.textContent = step.text;
+            stepIdx++;
+        }
+    }, 600);
+
+    try {
+        const formData = new FormData(form);
+        const resp = await fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'follow'
+        });
+
+        clearInterval(timer);
+        loadingFill.style.width = '100%';
+        loadingText.textContent = '100%';
+        loadingStatus.textContent = '创建成功！跳转中...';
+
+        // 跟随重定向
+        if (resp.redirected) {
+            setTimeout(() => { window.location.href = resp.url; }, 500);
+        } else {
+            // 如果没有重定向，可能是错误
+            const html = await resp.text();
+            document.open();
+            document.write(html);
+            document.close();
+        }
+    } catch (err) {
+        clearInterval(timer);
+        loadingModal.classList.remove('active');
+        createBtn.disabled = false;
+        createBtn.innerHTML = '🚀 创建收集任务';
+        alert('创建失败: ' + err.message);
+    }
+});
 </script>
 {% endblock %}

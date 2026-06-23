@@ -504,9 +504,20 @@ def admin_create():
             'zip_name': zip_name,
         }
 
-        data = load_data()
-        data['collections'][collection_id] = collection
-        save_ok = save_data(data)
+        # 只保存新任务到 Supabase（不再全量重刷所有任务）
+        save_ok = False
+        if _sb_available():
+            result = sb.save_collection(collection)
+            save_ok = result is not None
+        # 本地备份
+        try:
+            data = load_data()
+            data['collections'][collection_id] = collection
+            with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            save_ok = True
+        except Exception:
+            pass
 
         if not save_ok:
             flash('数据保存失败，请检查 Supabase 配置或稍后重试', 'error')
