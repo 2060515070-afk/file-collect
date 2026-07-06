@@ -17,6 +17,7 @@ def _api(method, path, data=None):
     headers = {
         'X-API-Key': API_KEY,
         'Content-Type': 'application/json',
+        'User-Agent': 'FileCollect-API-Client/1.0',
     }
     body = json.dumps(data).encode('utf-8') if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
