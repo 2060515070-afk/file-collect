@@ -862,7 +862,9 @@ def api_confirm_upload(collection_id):
         'emailed': False
     })
 
-    check_and_auto_email(collection_id)
+    # 异步检查自动邮件（不阻塞响应）
+    import threading
+    threading.Thread(target=check_and_auto_email, args=(collection_id,), daemon=True).start()
 
     return jsonify({'success': True, 'files_count': len(uploaded_files)})
 
@@ -982,8 +984,9 @@ def api_submit(collection_id):
         'emailed': False  # 重置邮件状态，因为有新提交
     })
 
-    # 检查是否所有人都提交了
-    check_and_auto_email(collection_id)
+    # 异步检查自动邮件（不阻塞响应）
+    import threading
+    threading.Thread(target=check_and_auto_email, args=(collection_id,), daemon=True).start()
 
     return jsonify({
         'success': True,
