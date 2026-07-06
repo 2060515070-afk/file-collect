@@ -295,18 +295,47 @@ async function handleSubmit(e) {
                     });
                 });
             } else {
-                // ── 小文件：直接上传 ──
+                // ── 小文件：签名 URL 直传（比 Supabase SDK 快得多） ──
                 statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}`;
-                const { error } = await _supabase.storage
-                    .from('file-collect')
-                    .upload(uploadInfo.storage_path, file, {
-                        contentType: file.type || 'application/octet-stream',
-                        upsert: false
+                if (uploadInfo.signed_url) {
+                    // 用签名 URL 直传，走浏览器原生 fetch
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('PUT', uploadInfo.signed_url, true);
+                        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+                        xhr.upload.onprogress = function(e) {
+                            if (e.lengthComputable) {
+                                const currentUploaded = uploadedSize + e.loaded;
+                                const pct = Math.min(Math.round(currentUploaded / totalSize * 100), 99);
+                                fill.style.width = pct + '%';
+                                statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name} [${formatBytes(e.loaded)}/${formatBytes(e.total)}]`;
+                                progressText.textContent = `${pct}% (${formatBytes(currentUploaded)} / ${formatBytes(totalSize)})`;
+                            }
+                        };
+                        xhr.onload = function() {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                uploadedSize += file.size;
+                                resolve();
+                            } else {
+                                reject(new Error(`文件 ${file.name} 上传失败 (${xhr.status})`));
+                            }
+                        };
+                        xhr.onerror = function() { reject(new Error(`文件 ${file.name} 网络错误`)); };
+                        xhr.send(file);
                     });
-                if (error) {
-                    throw new Error(`文件 ${file.name} 上传失败: ${error.message}`);
+                } else {
+                    // 回退到 Supabase SDK
+                    const { error } = await _supabase.storage
+                        .from('file-collect')
+                        .upload(uploadInfo.storage_path, file, {
+                            contentType: file.type || 'application/octet-stream',
+                            upsert: false
+                        });
+                    if (error) {
+                        throw new Error(`文件 ${file.name} 上传失败: ${error.message}`);
+                    }
+                    uploadedSize += file.size;
                 }
-                uploadedSize += file.size;
                 const pct = Math.round(uploadedSize / totalSize * 100);
                 fill.style.width = pct + '%';
                 progressText.textContent = `${pct}% (${formatBytes(uploadedSize)} / ${formatBytes(totalSize)})`;
