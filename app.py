@@ -56,6 +56,9 @@ SMTP_PASS = os.environ.get('SMTP_PASS', '')
 # 管理员密码 (可通过环境变量覆盖)
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
+# API Key (可通过环境变量覆盖，用于程序化访问)
+API_KEY = os.environ.get('FILECOLLECT_API_KEY', 'fc-api-key-2026')
+
 # 数据文件路径
 DATA_FILE = os.path.join(DATA_DIR, 'data.json')
 
@@ -173,6 +176,16 @@ def admin_required(f):
     def decorated(*args, **kwargs):
         if not session.get('is_admin'):
             return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated
+
+def api_key_required(f):
+    """API Key 认证装饰器，支持 Header 或 Query 参数"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if not key or key != API_KEY:
+            return jsonify({'error': '未授权：请提供有效的 API Key'}), 401
         return f(*args, **kwargs)
     return decorated
 
@@ -1008,6 +1021,339 @@ def api_check_email(collection_id):
     if collection.get('emailed'):
         return jsonify({'success': True, 'message': '邮件已发送过'})
     return jsonify({'success': False, 'message': '尚未全部提交'})
+
+
+# ── 外部 API (Token 认证) ─────────────────────────────────────────────
+@app.route('/api/v1/collections', methods=['GET'])
+@api_key_required
+def api_v1_list_collections():
+    """列出所有收集任务"""
+    data = load_data()
+    collections = sorted(
+        data['collections'].values(),
+        key=lambda x: x.get('created_at', ''),
+        reverse=True
+    )
+    # 精简返回
+    result = []
+    for c in collections:
+        people = c.get('people', [])
+        result.append({
+            'id': c['id'],
+            'title': c.get('title', ''),
+            'description': c.get('description', ''),
+            'target_email': c.get('target_email', ''),
+            'allowed_types': c.get('allowed_types', ['any']),
+            'max_files': c.get('max_files', 10),
+            'max_size_mb': c.get('max_size_mb', 50),
+            'created_at': c.get('created_at', ''),
+            'emailed': c.get('emailed', False),
+            'auto_email': c.get('auto_email', False),
+            'zip_name': c.get('zip_name', ''),
+            'people_count': len(people),
+            'submitted_count': sum(1 for p in people if p.get('submitted')),
+        })
+    return jsonify({'collections': result})
+
+
+@app.route('/api/v1/collections', methods=['POST'])
+@api_key_required
+def api_v1_create_collection():
+    """创建新的收集任务"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请提供 JSON 数据'}), 400
+
+    title = data.get('title', '').strip()
+    if not title:
+        return jsonify({'error': '标题不能为空'}), 400
+
+    description = data.get('description', '').strip()
+    target_email = data.get('target_email', '').strip()
+    allowed_types = data.get('allowed_types', ['any'])
+    max_files = data.get('max_files', 10)
+    max_size_mb = data.get('max_size_mb', 50)
+    auto_email = data.get('auto_email', False)
+    zip_name = data.get('zip_name', '').strip()
+    people_names = data.get('people', [])  # 列表，每项是名字字符串
+
+    # 构建人员列表
+    people = []
+    for name in people_names:
+        name = str(name).strip()
+        if name:
+            people.append({
+                'id': uuid.uuid4().hex[:8],
+                'name': name,
+                'submitted': False,
+                'files': [],
+                'submitted_at': None
+            })
+
+    if not allowed_types:
+        allowed_types = ['any']
+
+    collection_id = uuid.uuid4().hex[:12]
+    collection = {
+        'id': collection_id,
+        'title': title,
+        'description': description,
+        'target_email': target_email,
+        'allowed_types': allowed_types,
+        'people': people,
+        'max_files': max_files,
+        'max_size_mb': max_size_mb,
+        'created_at': datetime.now().isoformat(),
+        'emailed': False,
+        'emailed_at': None,
+        'auto_email': auto_email,
+        'zip_name': zip_name,
+    }
+
+    # 保存到 Supabase
+    save_ok = False
+    if _sb_available():
+        result = sb.save_collection(collection)
+        save_ok = result is not None
+    # 本地备份
+    try:
+        local_data = load_data()
+        local_data['collections'][collection_id] = collection
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(local_data, f, ensure_ascii=False, indent=2)
+        save_ok = True
+    except Exception:
+        pass
+
+    if not save_ok:
+        return jsonify({'error': '保存失败'}), 500
+
+    share_url = request.host_url.rstrip('/') + f'/submit/{collection_id}'
+    return jsonify({
+        'success': True,
+        'collection_id': collection_id,
+        'share_url': share_url,
+        'title': title,
+        'people_count': len(people),
+    }), 201
+
+
+@app.route('/api/v1/collections/<collection_id>', methods=['GET'])
+@api_key_required
+def api_v1_get_collection(collection_id):
+    """获取收集任务详情"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    people = collection.get('people', [])
+    share_url = request.host_url.rstrip('/') + f'/submit/{collection_id}'
+    return jsonify({
+        'id': collection['id'],
+        'title': collection.get('title', ''),
+        'description': collection.get('description', ''),
+        'target_email': collection.get('target_email', ''),
+        'allowed_types': collection.get('allowed_types', ['any']),
+        'max_files': collection.get('max_files', 10),
+        'max_size_mb': collection.get('max_size_mb', 50),
+        'created_at': collection.get('created_at', ''),
+        'emailed': collection.get('emailed', False),
+        'auto_email': collection.get('auto_email', False),
+        'zip_name': collection.get('zip_name', ''),
+        'share_url': share_url,
+        'people': [
+            {
+                'id': p['id'],
+                'name': p['name'],
+                'submitted': p.get('submitted', False),
+                'submitted_at': p.get('submitted_at'),
+                'files_count': len(p.get('files', [])),
+            }
+            for p in people
+        ],
+    })
+
+
+@app.route('/api/v1/collections/<collection_id>', methods=['DELETE'])
+@api_key_required
+def api_v1_delete_collection(collection_id):
+    """删除收集任务"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    # 删除上传的文件
+    for person in collection.get('people', []):
+        for file_info in person.get('files', []):
+            if file_info.get('path') and os.path.exists(file_info['path']):
+                os.remove(file_info['path'])
+            if file_info.get('storage_path') and _sb_available():
+                sb.delete_file(file_info['storage_path'])
+
+    if _sb_available():
+        sb.delete_collection(collection_id)
+    try:
+        data = load_data()
+        if collection_id in data['collections']:
+            del data['collections'][collection_id]
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    return jsonify({'success': True, 'message': f'收集任务 {collection_id} 已删除'})
+
+
+@app.route('/api/v1/collections/<collection_id>/people', methods=['POST'])
+@api_key_required
+def api_v1_add_people(collection_id):
+    """添加人员到收集任务"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请提供 JSON 数据'}), 400
+
+    names = data.get('names', [])
+    if isinstance(names, str):
+        names = [names]
+
+    added = []
+    for name in names:
+        name = str(name).strip()
+        if name and not any(p['name'] == name for p in collection['people']):
+            collection['people'].append({
+                'id': uuid.uuid4().hex[:8],
+                'name': name,
+                'submitted': False,
+                'files': [],
+                'submitted_at': None
+            })
+            added.append(name)
+
+    update_collection(collection_id, {'people': collection['people']})
+    return jsonify({'success': True, 'added': added, 'total_people': len(collection['people'])})
+
+
+@app.route('/api/v1/collections/<collection_id>/people/<person_id>', methods=['DELETE'])
+@api_key_required
+def api_v1_remove_person(collection_id, person_id):
+    """从收集任务中移除人员"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    before = len(collection['people'])
+    collection['people'] = [p for p in collection['people'] if p['id'] != person_id]
+    after = len(collection['people'])
+
+    if before == after:
+        return jsonify({'error': '未找到该人员'}), 404
+
+    update_collection(collection_id, {'people': collection['people']})
+    return jsonify({'success': True, 'remaining': after})
+
+
+@app.route('/api/v1/collections/<collection_id>/send-email', methods=['POST'])
+@api_key_required
+def api_v1_send_email(collection_id):
+    """手动触发邮件发送"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    data = request.get_json() or {}
+    target_email = data.get('email') or collection.get('target_email')
+    if not target_email:
+        return jsonify({'error': '请指定接收邮箱'}), 400
+
+    update_collection(collection_id, {'target_email': target_email})
+
+    zip_path = save_zip_to_temp(collection)
+    people = collection.get('people', [])
+    submitted_count = sum(1 for p in people if p.get('submitted'))
+
+    html_body = f"""
+    <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">📦 文件收集 - {collection['title']}</h1>
+        </div>
+        <div style="background: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+            <p style="color: #334155;">您好，以下是文件收集结果：</p>
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 5px 0; color: #475569;">📋 任务: <strong>{collection['title']}</strong></p>
+                <p style="margin: 5px 0; color: #475569;">✅ 已提交: <strong>{submitted_count}/{len(people)}</strong> 人</p>
+            </div>
+            <p style="color: #94a3b8; font-size: 12px;">此邮件由文件收集站发送</p>
+        </div>
+    </div>
+    """
+
+    success, msg = send_email(
+        target_email,
+        f"📦 文件收集 - {collection['title']}",
+        html_body,
+        zip_path,
+        get_zip_name(collection)
+    )
+
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
+
+    if success:
+        update_collection(collection_id, {'emailed': True, 'emailed_at': datetime.now().isoformat()})
+        return jsonify({'success': True, 'message': '邮件发送成功'})
+    else:
+        return jsonify({'error': msg}), 500
+
+
+@app.route('/api/v1/collections/<collection_id>/download-zip', methods=['GET'])
+@api_key_required
+def api_v1_download_zip(collection_id):
+    """下载 ZIP 文件"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    zip_data = create_zip(collection)
+    return send_file(
+        zip_data,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=get_zip_name(collection)
+    )
+
+
+@app.route('/api/v1/collections/<collection_id>/reset-person/<person_id>', methods=['POST'])
+@api_key_required
+def api_v1_reset_person(collection_id, person_id):
+    """重置某人的提交状态"""
+    collection = get_collection(collection_id)
+    if not collection:
+        return jsonify({'error': '收集任务不存在'}), 404
+
+    found = False
+    for person in collection['people']:
+        if person['id'] == person_id:
+            for file_info in person.get('files', []):
+                if file_info.get('path') and os.path.exists(file_info['path']):
+                    os.remove(file_info['path'])
+            person['submitted'] = False
+            person['files'] = []
+            person['submitted_at'] = None
+            found = True
+            break
+
+    if not found:
+        return jsonify({'error': '未找到该人员'}), 404
+
+    update_collection(collection_id, {
+        'people': collection['people'],
+        'emailed': False
+    })
+    return jsonify({'success': True, 'message': f'已重置 {person_id} 的提交状态'})
 
 
 # ── 错误处理 ──────────────────────────────────────────────────────────
