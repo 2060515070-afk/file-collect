@@ -54,7 +54,45 @@
             <!-- 姓名选择 -->
             <div class="mb-5">
                 <label class="block text-sm text-slate-400 mb-2">👤 选择您的姓名 <span class="text-red-400">*</span></label>
-                <select name="person_id" class="input-field" required id="personSelect">
+                <!-- 已选人员标签 -->
+                <div id="selectedTag" class="hidden mb-2">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium" style="background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(59,130,246,0.25));border:1px solid rgba(124,58,237,0.4);">
+                        <span id="selectedName"></span>
+                        <button type="button" onclick="clearPerson()" class="ml-1 text-slate-400 hover:text-white transition-colors">✕</button>
+                    </span>
+                </div>
+                <!-- 搜索框 -->
+                <div id="searchWrap" class="relative">
+                    <div class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">🔍</div>
+                    <input type="text" id="personSearch" placeholder="输入姓名搜索..."
+                           class="w-full pl-10 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all"
+                           style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);"
+                           onfocus="this.style.borderColor='rgba(124,58,237,0.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,0.15)'"
+                           onblur="this.style.borderColor='rgba(255,255,255,0.1)';this.style.boxShadow='none'"
+                           oninput="filterPeople(this.value)">
+                </div>
+                <!-- 人员列表 -->
+                <div id="peopleList" class="mt-2 max-h-48 overflow-y-auto rounded-xl" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);">
+                    {% for person in collection.people %}
+                        {% if not person.submitted %}
+                        <div class="person-item flex items-center gap-3 px-4 py-3 cursor-pointer transition-all"
+                             data-id="{{ person.id }}" data-name="{{ person.name }}"
+                             onclick="selectPerson('{{ person.id }}', '{{ person.name }}')"
+                             onmouseenter="this.style.background='rgba(124,58,237,0.12)'"
+                             onmouseleave="this.style.background='transparent'">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style="background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(59,130,246,0.3));">
+                                {{ person.name[0] }}
+                            </div>
+                            <span class="text-sm text-slate-300">{{ person.name }}</span>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                    <div id="noResult" class="hidden px-4 py-3 text-sm text-slate-500 text-center">
+                        😅 没有找到匹配的人
+                    </div>
+                </div>
+                <!-- 隐藏的 select 用于表单提交 -->
+                <select name="person_id" id="personSelect" class="hidden" required>
                     <option value="">-- 请选择 --</option>
                     {% for person in collection.people %}
                         {% if not person.submitted %}
@@ -64,7 +102,7 @@
                 </select>
                 {% set available = collection.people | rejectattr('submitted') | list | length %}
                 {% if available == 0 %}
-                <p class="text-xs text-orange-400 mt-1">⚠️ 所有人都已提交</p>
+                <p class="text-xs text-orange-400 mt-2">⚠️ 所有人都已提交</p>
                 {% endif %}
             </div>
 
@@ -124,6 +162,39 @@
 <script>
 const _supabase = supabase.createClient('{{ supabase_url }}', '{{ supabase_anon }}');
 let selectedFiles = [];
+
+// ── 人员搜索与选择 ──
+function selectPerson(id, name) {
+    document.getElementById('personSelect').value = id;
+    document.getElementById('selectedName').textContent = name;
+    document.getElementById('selectedTag').classList.remove('hidden');
+    document.getElementById('searchWrap').classList.add('hidden');
+    document.getElementById('peopleList').classList.add('hidden');
+    // 高亮选中项
+    document.querySelectorAll('.person-item').forEach(el => {
+        el.style.background = el.dataset.id === id ? 'rgba(124,58,237,0.2)' : 'transparent';
+    });
+}
+function clearPerson() {
+    document.getElementById('personSelect').value = '';
+    document.getElementById('selectedTag').classList.add('hidden');
+    document.getElementById('searchWrap').classList.remove('hidden');
+    document.getElementById('peopleList').classList.remove('hidden');
+    document.getElementById('personSearch').value = '';
+    filterPeople('');
+}
+function filterPeople(query) {
+    const items = document.querySelectorAll('.person-item');
+    const q = query.toLowerCase().trim();
+    let visible = 0;
+    items.forEach(el => {
+        const name = el.dataset.name.toLowerCase();
+        const match = !q || name.includes(q);
+        el.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('noResult').classList.toggle('hidden', visible > 0);
+}
 
 function formatBytes(bytes) {
     if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
