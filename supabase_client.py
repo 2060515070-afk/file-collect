@@ -258,3 +258,56 @@ def download_file(storage_path):
     except Exception as e:
         print(f"[storage] download error: {e}")
         return None
+
+
+# ── Surveys 问卷功能 ─────────────────────────────────────────────────
+SURVEYS_TABLE = 'surveys'
+
+
+def get_all_surveys():
+    """获取所有问卷（返回 dict，key 为 survey id）"""
+    result = _request('GET', f'{SURVEYS_TABLE}?order=created_at.desc')
+    if result is None:
+        return None
+    surveys = {}
+    for row in result:
+        surveys[row['id']] = {
+            'id': row['id'],
+            'title': row.get('title', ''),
+            'description': row.get('description', ''),
+            'target_email': row.get('target_email', ''),
+            'questions': json.loads(row.get('questions', '[]')),
+            'people': json.loads(row.get('people', '[]')),
+            'responses': json.loads(row.get('responses', '{}')),
+            'created_at': row.get('created_at', ''),
+            'emailed': row.get('emailed', False),
+            'emailed_at': row.get('emailed_at'),
+            'auto_email': row.get('auto_email', False),
+        }
+    return surveys
+
+
+def save_survey(survey):
+    """保存/更新一个问卷（upsert）"""
+    row = {
+        'id': survey['id'],
+        'title': survey.get('title', ''),
+        'description': survey.get('description', ''),
+        'target_email': survey.get('target_email', ''),
+        'questions': json.dumps(survey.get('questions', []), ensure_ascii=False),
+        'people': json.dumps(survey.get('people', []), ensure_ascii=False),
+        'responses': json.dumps(survey.get('responses', {}), ensure_ascii=False),
+        'created_at': survey.get('created_at', ''),
+        'emailed': survey.get('emailed', False),
+        'emailed_at': survey.get('emailed_at'),
+        'auto_email': survey.get('auto_email', False),
+    }
+    result = _request('POST', SURVEYS_TABLE, row)
+    if result is None:
+        result = _request('PATCH', f'{SURVEYS_TABLE}?id=eq.{survey["id"]}', row)
+    return result
+
+
+def delete_survey(survey_id):
+    """删除一个问卷"""
+    return _request('DELETE', f'{SURVEYS_TABLE}?id=eq.{survey_id}')

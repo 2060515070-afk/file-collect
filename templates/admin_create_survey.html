@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}创建问卷 - FileCollect{% endblock %}
+
+{% block head %}
+<style>
+    .question-card { transition: all 0.3s ease; }
+    .question-card:hover { border-color: rgba(124,58,237,0.3); }
+    .q-type-select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none; }
+    .q-type-select:focus { border-color: #7c3aed; }
+    .q-input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 8px 12px; border-radius: 8px; font-size: 13px; width: 100%; outline: none; }
+    .q-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.15); }
+    .q-input::placeholder { color: #64748b; }
+    .q-textarea { resize: vertical; min-height: 60px; }
+    .options-wrap { display: none; }
+    .options-wrap.show { display: block; }
+    .btn-add-q { background: rgba(124,58,237,0.15); border: 2px dashed rgba(124,58,237,0.4); color: #a78bfa; padding: 16px; border-radius: 12px; cursor: pointer; transition: all 0.3s; text-align: center; font-size: 14px; }
+    .btn-add-q:hover { background: rgba(124,58,237,0.25); border-color: rgba(124,58,237,0.6); }
+    .btn-remove-q { background: rgba(239,68,68,0.15); border: none; color: #f87171; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+    .btn-remove-q:hover { background: rgba(239,68,68,0.3); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="flex items-center gap-3 mb-6 animate-fade-in-up">
+        <a href="{{ url_for('admin_surveys') }}" class="text-slate-400 hover:text-white transition-colors">← 返回</a>
+        <h1 class="text-2xl font-bold text-white">📋 创建问卷</h1>
+    </div>
+
+    <form id="surveyForm" class="animate-fade-in-up delay-100">
+        <!-- 基本信息 -->
+        <div class="glass p-6 mb-4">
+            <h2 class="text-lg font-semibold text-white mb-4">📝 基本信息</h2>
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">问卷标题 <span class="text-red-400">*</span></label>
+                <input type="text" name="title" class="input-field" placeholder="例：2456班同学信息采集" required>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">描述说明</label>
+                <textarea name="description" class="input-field" rows="2" placeholder="可选，对问卷的补充说明"></textarea>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">目标邮箱</label>
+                <input type="email" name="target_email" class="input-field" placeholder="可选，全员提交后通知此邮箱">
+            </div>
+            <div class="flex items-center justify-between p-3 glass">
+                <div>
+                    <div class="text-sm text-white font-medium">📧 自动发送邮件</div>
+                    <div class="text-xs text-slate-500">全员提交后自动发送通知</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="auto_email" value="1" class="sr-only peer">
+                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:bg-violet-600 transition-colors
+                                after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
+                                peer-checked:after:translate-x-full"></div>
+                </label>
+            </div>
+        </div>
+
+        <!-- 问题设计 -->
+        <div class="glass p-6 mb-4">
+            <h2 class="text-lg font-semibold text-white mb-4">❓ 问题设计</h2>
+            <p class="text-sm text-slate-400 mb-4">添加问卷问题，支持多种题型。姓名为必填项，无需手动添加。</p>
+
+            <div id="questionsList" class="space-y-3 mb-4">
+                <!-- 问题卡片由 JS 动态生成 -->
+            </div>
+
+            <div class="btn-add-q" onclick="addQuestion()">
+                ➕ 添加问题
+            </div>
+
+            <input type="hidden" name="questions_json" id="questionsJson" value="[]">
+        </div>
+
+        <!-- 人员名单 -->
+        <div class="glass p-6 mb-6">
+            <h2 class="text-lg font-semibold text-white mb-4">👥 人员名单</h2>
+            <p class="text-sm text-slate-400 mb-4">每行一个姓名，填写时需从列表中选择（确保姓名归属）</p>
+            <textarea name="people" class="input-field" rows="6" placeholder="张三&#10;李四&#10;王五&#10;（每行一个名字）"></textarea>
+            <p class="text-xs text-slate-500 mt-2" id="peopleCount">已输入 0 人</p>
+        </div>
+
+        <!-- 提交 -->
+        <div class="flex justify-end gap-3">
+            <a href="{{ url_for('admin_surveys') }}" class="btn-ghost">取消</a>
+            <button type="submit" class="btn-primary px-8 py-3 text-base" id="createBtn">🚀 创建问卷</button>
+        </div>
+    </form>
+
+    <!-- 加载弹窗 -->
+    <div class="modal-overlay" id="loadingModal">
+        <div class="modal-box">
+            <div class="modal-icon">⏳</div>
+            <div class="modal-title">正在创建问卷</div>
+            <div class="modal-desc" id="loadingStatus">保存中...</div>
+            <div class="progress-bar"><div class="progress-fill" id="loadingFill" style="width:0%"></div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let questions = [];
+const QUESTIONS_TYPES = {
+    'text': { name: '单行文本', icon: '✏️', hasOptions: false },
+    'textarea': { name: '多行文本', icon: '📝', hasOptions: false },
+    'radio': { name: '单选题', icon: '🔘', hasOptions: true },
+    'checkbox': { name: '多选题', icon: '☑️', hasOptions: true },
+    'select': { name: '下拉选择', icon: '📋', hasOptions: true },
+    'number': { name: '数字', icon: '🔢', hasOptions: false },
+    'date': { name: '日期', icon: '📅', hasOptions: false },
+    'rating': { name: '评分(1-5星)', icon: '⭐', hasOptions: false },
+};
+
+function addQuestion() {
+    const q = {
+        id: 'q_' + Math.random().toString(36).substr(2, 8),
+        type: 'text',
+        label: '',
+        required: false,
+        options: []
+    };
+    questions.push(q);
+    renderQuestions();
+}
+
+function removeQuestion(index) {
+    questions.splice(index, 1);
+    renderQuestions();
+}
+
+function moveQuestion(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= questions.length) return;
+    [questions[index], questions[newIndex]] = [questions[newIndex], questions[index]];
+    renderQuestions();
+}
+
+function renderQuestions() {
+    const container = document.getElementById('questionsList');
+    container.innerHTML = '';
+
+    questions.forEach((q, idx) => {
+        const typeInfo = QUESTIONS_TYPES[q.type] || QUESTIONS_TYPES['text'];
+        const hasOptions = typeInfo.hasOptions;
+
+        let optionsHtml = '';
+        if (hasOptions) {
+            const optText = (q.options || []).join('\\n');
+            optionsHtml = `
+                <div class="options-wrap show mt-3">
+                    <label class="block text-xs text-slate-500 mb-1">选项（每行一个）</label>
+                    <textarea class="q-input q-textarea" rows="3" placeholder="选项A&#10;选项B&#10;选项C"
+                              onchange="updateOptions(${idx}, this.value)">${optText}</textarea>
+                </div>`;
+        }
+
+        const div = document.createElement('div');
+        div.className = 'glass p-4 question-card';
+        div.innerHTML = `
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-slate-500 text-sm font-medium w-6">${idx + 1}.</span>
+                <select class="q-type-select" onchange="changeType(${idx}, this.value)">
+                    ${Object.entries(QUESTIONS_TYPES).map(([key, val]) =>
+                        `<option value="${key}" ${q.type === key ? 'selected' : ''}>${val.icon} ${val.name}</option>`
+                    ).join('')}
+                </select>
+                <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer ml-auto">
+                    <input type="checkbox" ${q.required ? 'checked' : ''} onchange="toggleRequired(${idx}, this.checked)">
+                    <span>必填</span>
+                </label>
+                <div class="flex gap-1">
+                    <button type="button" onclick="moveQuestion(${idx}, -1)" class="text-slate-500 hover:text-white text-sm px-1" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                    <button type="button" onclick="moveQuestion(${idx}, 1)" class="text-slate-500 hover:text-white text-sm px-1" ${idx === questions.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button type="button" onclick="removeQuestion(${idx})" class="btn-remove-q">删除</button>
+                </div>
+            </div>
+            <input type="text" class="q-input" placeholder="请输入问题内容..." value="${q.label.replace(/"/g, '&quot;')}"
+                   onchange="updateLabel(${idx}, this.value)">
+            ${optionsHtml}
+        `;
+        container.appendChild(div);
+    });
+
+    document.getElementById('questionsJson').value = JSON.stringify(questions);
+}
+
+function changeType(index, type) {
+    questions[index].type = type;
+    if (!QUESTIONS_TYPES[type].hasOptions) {
+        questions[index].options = [];
+    }
+    renderQuestions();
+}
+
+function updateLabel(index, value) {
+    questions[index].label = value;
+    document.getElementById('questionsJson').value = JSON.stringify(questions);
+}
+
+function toggleRequired(index, checked) {
+    questions[index].required = checked;
+    document.getElementById('questionsJson').value = JSON.stringify(questions);
+}
+
+function updateOptions(index, text) {
+    questions[index].options = text.split('\\n').map(s => s.trim()).filter(Boolean);
+    document.getElementById('questionsJson').value = JSON.stringify(questions);
+}
+
+// 人员计数
+const peopleTA = document.querySelector('textarea[name="people"]');
+peopleTA.addEventListener('input', function() {
+    const count = this.value.split('\\n').filter(l => l.trim()).length;
+    document.getElementById('peopleCount').textContent = `已输入 ${count} 人`;
+});
+
+// 表单提交
+document.getElementById('surveyForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (!this.checkValidity()) { this.reportValidity(); return; }
+    if (questions.length === 0) { alert('请至少添加一个问题'); return; }
+
+    // 同步问题数据
+    document.getElementById('questionsJson').value = JSON.stringify(questions);
+
+    const btn = document.getElementById('createBtn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ 创建中...';
+    document.getElementById('loadingModal').classList.add('active');
+
+    const fill = document.getElementById('loadingFill');
+    fill.style.width = '50%';
+
+    try {
+        const formData = new FormData(this);
+        const resp = await fetch('{{ url_for("admin_create_survey") }}', {
+            method: 'POST',
+            body: formData,
+            redirect: 'follow'
+        });
+        fill.style.width = '100%';
+        document.getElementById('loadingStatus').textContent = '创建成功！跳转中...';
+
+        if (resp.redirected) {
+            setTimeout(() => { window.location.href = resp.url; }, 500);
+        } else {
+            const html = await resp.text();
+            document.open();
+            document.write(html);
+            document.close();
+        }
+    } catch (err) {
+        document.getElementById('loadingModal').classList.remove('active');
+        btn.disabled = false;
+        btn.innerHTML = '🚀 创建问卷';
+        alert('创建失败: ' + err.message);
+    }
+});
+
+// 初始化：添加一个默认问题
+addQuestion();
+</script>
+{% endblock %}

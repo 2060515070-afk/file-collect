@@ -31,6 +31,31 @@ except Exception:
     sb = None
     print("Warning: supabase_client not available, using local storage")
 
+# 可选依赖：导出功能
+try:
+    from openpyxl import Workbook
+    HAS_OPENPYXL = True
+except ImportError:
+    HAS_OPENPYXL = False
+
+try:
+    from docx import Document as DocxDocument
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+
 # ── 配置 ──────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 阿里云 FC 环境下用 /tmp（唯一可写目录），本地用项目目录
@@ -1357,6 +1382,608 @@ def api_v1_reset_person(collection_id, person_id):
         'emailed': False
     })
     return jsonify({'success': True, 'message': f'已重置 {person_id} 的提交状态'})
+
+
+# ── 问卷功能 ──────────────────────────────────────────────────────────
+
+# 问卷数据管理
+def get_survey(survey_id):
+    """获取单个问卷"""
+    if _sb_available():
+        try:
+            result = sb._request('GET', f'surveys?id=eq.{survey_id}&select=*')
+            if result and len(result) > 0:
+                row = result[0]
+                return {
+                    'id': row['id'],
+                    'title': row.get('title', ''),
+                    'description': row.get('description', ''),
+                    'target_email': row.get('target_email', ''),
+                    'questions': json.loads(row.get('questions', '[]')),
+                    'people': json.loads(row.get('people', '[]')),
+                    'responses': json.loads(row.get('responses', '{}')),
+                    'created_at': row.get('created_at', ''),
+                    'emailed': row.get('emailed', False),
+                    'emailed_at': row.get('emailed_at'),
+                    'auto_email': row.get('auto_email', False),
+                }
+        except Exception as e:
+            print(f'[get_survey] Supabase error: {e}')
+    # 回退到本地
+    try:
+        with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data.get('surveys', {}).get(survey_id)
+    except Exception:
+        return None
+
+
+def update_survey(survey_id, updates):
+    """更新问卷字段"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return False
+    survey.update(updates)
+    if _sb_available():
+        sb.save_survey(survey)
+    # 本地备份
+    try:
+        data = {'surveys': {}}
+        if os.path.exists(DATA_FILE_SURVEYS):
+            with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        data['surveys'][survey_id] = survey
+        with open(DATA_FILE_SURVEYS, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    return True
+
+
+# 问卷数据文件路径
+DATA_FILE_SURVEYS = os.path.join(DATA_DIR, 'data_surveys.json')
+
+
+# ── 问卷管理路由 ──────────────────────────────────────────────────────
+@app.route('/admin/surveys')
+@admin_required
+def admin_surveys():
+    """问卷列表"""
+    surveys = {}
+    if _sb_available():
+        surveys = sb.get_all_surveys() or {}
+    if not surveys:
+        try:
+            if os.path.exists(DATA_FILE_SURVEYS):
+                with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                surveys = data.get('surveys', {})
+        except Exception:
+            pass
+    survey_list = sorted(surveys.values(), key=lambda x: x.get('created_at', ''), reverse=True)
+    return render_template('admin_surveys.html', surveys=survey_list)
+
+
+@app.route('/admin/survey/create', methods=['GET', 'POST'])
+@admin_required
+def admin_create_survey():
+    """创建问卷"""
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        target_email = request.form.get('target_email', '').strip()
+        auto_email = bool(request.form.get('auto_email'))
+        people_raw = request.form.get('people', '').strip()
+        questions_raw = request.form.get('questions_json', '[]')
+
+        if not title:
+            flash('请输入问卷标题', 'error')
+            return render_template('admin_create_survey.html')
+
+        # 解析题目
+        try:
+            questions = json.loads(questions_raw)
+        except Exception:
+            questions = []
+
+        # 为每个题目生成ID
+        for q in questions:
+            if not q.get('id'):
+                q['id'] = 'q_' + uuid.uuid4().hex[:8]
+
+        # 解析人员名单
+        people = []
+        if people_raw:
+            for line in people_raw.strip().split('\n'):
+                name = line.strip()
+                if name:
+                    people.append({
+                        'id': uuid.uuid4().hex[:8],
+                        'name': name,
+                        'submitted': False,
+                        'submitted_at': None
+                    })
+
+        survey_id = uuid.uuid4().hex[:12]
+        survey = {
+            'id': survey_id,
+            'title': title,
+            'description': description,
+            'target_email': target_email,
+            'questions': questions,
+            'people': people,
+            'responses': {},
+            'created_at': datetime.now().isoformat(),
+            'emailed': False,
+            'emailed_at': None,
+            'auto_email': auto_email,
+        }
+
+        # 保存
+        save_ok = False
+        if _sb_available():
+            result = sb.save_survey(survey)
+            save_ok = result is not None
+        try:
+            data = {'surveys': {}}
+            if os.path.exists(DATA_FILE_SURVEYS):
+                with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            data['surveys'][survey_id] = survey
+            with open(DATA_FILE_SURVEYS, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            save_ok = True
+        except Exception:
+            pass
+
+        if not save_ok:
+            flash('保存失败，请稍后重试', 'error')
+            return render_template('admin_create_survey.html')
+
+        flash('问卷创建成功！', 'success')
+        return redirect(url_for('admin_survey_detail', survey_id=survey_id))
+
+    return render_template('admin_create_survey.html')
+
+
+@app.route('/admin/survey/<survey_id>')
+@admin_required
+def admin_survey_detail(survey_id):
+    """查看问卷结果"""
+    survey = get_survey(survey_id)
+    if not survey:
+        flash('问卷不存在', 'error')
+        return redirect(url_for('admin_surveys'))
+    share_url = request.host_url.rstrip('/') + url_for('survey_submit_page', survey_id=survey_id)
+    return render_template('admin_survey.html', survey=survey, share_url=share_url)
+
+
+@app.route('/admin/survey/<survey_id>/export/<format_type>')
+@admin_required
+def admin_survey_export(survey_id, format_type):
+    """导出问卷结果"""
+    survey = get_survey(survey_id)
+    if not survey:
+        flash('问卷不存在', 'error')
+        return redirect(url_for('admin_surveys'))
+
+    people = survey.get('people', [])
+    responses = survey.get('responses', {})
+    questions = survey.get('questions', [])
+
+    # 构建导出数据
+    rows = []  # [{name, answers: {q_id: answer}}]
+    for person in people:
+        pid = person['id']
+        ans = responses.get(pid, {})
+        rows.append({'name': person['name'], 'answers': ans, 'submitted': person.get('submitted', False)})
+
+    if format_type == 'excel':
+        return _export_survey_excel(survey, questions, rows)
+    elif format_type == 'word':
+        return _export_survey_word(survey, questions, rows)
+    elif format_type == 'pdf':
+        return _export_survey_pdf(survey, questions, rows)
+    else:
+        flash('不支持的导出格式', 'error')
+        return redirect(url_for('admin_survey_detail', survey_id=survey_id))
+
+
+def _get_answer_display(question, answer):
+    """将答案转为显示文本"""
+    if answer is None or answer == '':
+        return '未作答'
+    if question.get('type') == 'checkbox' and isinstance(answer, list):
+        return ', '.join(str(a) for a in answer)
+    if question.get('type') == 'rating':
+        return '⭐' * int(answer) if answer else '未评'
+    return str(answer)
+
+
+def _export_survey_excel(survey, questions, rows):
+    """导出 Excel"""
+    if not HAS_OPENPYXL:
+        return jsonify({'error': 'openpyxl 未安装，请运行: pip install openpyxl'}), 500
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = '问卷汇总'
+
+    # 表头
+    headers = ['姓名', '状态']
+    for q in questions:
+        headers.append(q.get('label', '未命名题目'))
+    ws.append(headers)
+
+    # 数据行
+    for row in rows:
+        line = [row['name'], '已提交' if row['submitted'] else '未提交']
+        for q in questions:
+            ans = row['answers'].get(q['id'])
+            line.append(_get_answer_display(q, ans))
+        ws.append(line)
+
+    # 调整列宽
+    for col_idx, header in enumerate(headers, 1):
+        ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else 'A'].width = max(len(str(header)) * 2, 12)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    safe_name = survey['title'].replace('/', '_').replace('\\', '_')
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=f'{safe_name}_问卷结果.xlsx')
+
+
+def _export_survey_word(survey, questions, rows):
+    """导出 Word"""
+    if not HAS_DOCX:
+        return jsonify({'error': 'python-docx 未安装，请运行: pip install python-docx'}), 500
+
+    doc = DocxDocument()
+    # 标题
+    doc.add_heading(survey['title'], level=0)
+    if survey.get('description'):
+        doc.add_paragraph(survey['description'])
+    doc.add_paragraph(f'创建时间: {survey.get("created_at", "")[:16].replace("T", " ")}')
+    doc.add_paragraph('')
+
+    # 按人列出
+    for row in rows:
+        doc.add_heading(row['name'], level=2)
+        status = '✅ 已提交' if row['submitted'] else '❌ 未提交'
+        doc.add_paragraph(f'状态: {status}')
+        if row['submitted']:
+            for q in questions:
+                ans = row['answers'].get(q['id'])
+                display = _get_answer_display(q, ans)
+                p = doc.add_paragraph()
+                run = p.add_run(f'{q.get("label", "")}: ')
+                run.bold = True
+                p.add_run(display)
+        doc.add_paragraph('')
+
+    output = io.BytesIO()
+    doc.save(output)
+    output.seek(0)
+    safe_name = survey['title'].replace('/', '_').replace('\\', '_')
+    return send_file(output,
+                     mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                     as_attachment=True, download_name=f'{safe_name}_问卷结果.docx')
+
+
+def _export_survey_pdf(survey, questions, rows):
+    """导出 PDF"""
+    if not HAS_REPORTLAB:
+        return jsonify({'error': 'reportlab 未安装，请运行: pip install reportlab'}), 500
+
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # 标题
+    elements.append(Paragraph(survey['title'], styles['Title']))
+    if survey.get('description'):
+        elements.append(Paragraph(survey['description'], styles['Normal']))
+    elements.append(Spacer(1, 1*cm))
+
+    # 表格
+    header_row = ['姓名']
+    for q in questions:
+        label = q.get('label', '')
+        if len(label) > 15:
+            label = label[:15] + '...'
+        header_row.append(label)
+
+    table_data = [header_row]
+    for row in rows:
+        line = [row['name']]
+        for q in questions:
+            ans = row['answers'].get(q['id'])
+            display = _get_answer_display(q, ans)
+            if len(display) > 20:
+                display = display[:20] + '...'
+            line.append(display)
+        table_data.append(line)
+
+    if len(table_data) > 1:
+        t = Table(table_data, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7c3aed')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8fafc')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f1f5f9')]),
+        ]))
+        elements.append(t)
+
+    doc.build(elements)
+    output.seek(0)
+    safe_name = survey['title'].replace('/', '_').replace('\\', '_')
+    return send_file(output, mimetype='application/pdf',
+                     as_attachment=True, download_name=f'{safe_name}_问卷结果.pdf')
+
+
+# ── 问卷公开填写 ──────────────────────────────────────────────────────
+@app.route('/survey/<survey_id>')
+def survey_submit_page(survey_id):
+    """问卷填写页面"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return render_template('error.html', message='问卷不存在或已过期'), 404
+    return render_template('survey_submit.html', survey=survey, hide_admin_link=True)
+
+
+@app.route('/api/survey/<survey_id>/submit', methods=['POST'])
+def api_survey_submit(survey_id):
+    """提交问卷回答"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return jsonify({'error': '问卷不存在'}), 404
+
+    data = request.get_json()
+    person_id = data.get('person_id', '')
+    answers = data.get('answers', {})
+
+    if not person_id:
+        return jsonify({'error': '请选择您的姓名'}), 400
+
+    # 查找人员
+    person_index = None
+    for i, p in enumerate(survey['people']):
+        if p['id'] == person_id:
+            person_index = i
+            break
+    if person_index is None:
+        return jsonify({'error': '未找到您的姓名'}), 400
+    if survey['people'][person_index].get('submitted'):
+        return jsonify({'error': '您已提交过问卷'}), 400
+
+    # 验证必填题
+    for q in survey.get('questions', []):
+        if q.get('required'):
+            ans = answers.get(q['id'])
+            if ans is None or ans == '' or ans == []:
+                return jsonify({'error': f'请回答必填题: {q.get("label", "")}'}), 400
+
+    # 保存回答
+    if 'responses' not in survey:
+        survey['responses'] = {}
+    survey['responses'][person_id] = answers
+    survey['people'][person_index]['submitted'] = True
+    survey['people'][person_index]['submitted_at'] = datetime.now().isoformat()
+
+    # 保存到数据库
+    update_survey(survey_id, {
+        'responses': survey['responses'],
+        'people': survey['people'],
+        'emailed': False
+    })
+
+    return jsonify({'success': True, 'message': '问卷提交成功！'})
+
+
+# ── 问卷 API (外部接口) ───────────────────────────────────────────────
+@app.route('/api/v1/surveys', methods=['GET'])
+@api_key_required
+def api_v1_list_surveys():
+    """列出所有问卷"""
+    surveys = {}
+    if _sb_available():
+        surveys = sb.get_all_surveys() or {}
+    if not surveys:
+        try:
+            if os.path.exists(DATA_FILE_SURVEYS):
+                with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                surveys = data.get('surveys', {})
+        except Exception:
+            pass
+    result = []
+    for s in surveys.values():
+        people = s.get('people', [])
+        responses = s.get('responses', {})
+        result.append({
+            'id': s['id'],
+            'title': s.get('title', ''),
+            'description': s.get('description', ''),
+            'created_at': s.get('created_at', ''),
+            'people_count': len(people),
+            'submitted_count': sum(1 for p in people if p.get('submitted')),
+            'response_count': len(responses),
+        })
+    return jsonify({'surveys': result})
+
+
+@app.route('/api/v1/surveys', methods=['POST'])
+@api_key_required
+def api_v1_create_survey():
+    """创建问卷"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '请提供 JSON 数据'}), 400
+
+    title = data.get('title', '').strip()
+    if not title:
+        return jsonify({'error': '标题不能为空'}), 400
+
+    survey_id = uuid.uuid4().hex[:12]
+    people_names = data.get('people', [])
+    people = []
+    for name in people_names:
+        name = str(name).strip()
+        if name:
+            people.append({
+                'id': uuid.uuid4().hex[:8],
+                'name': name,
+                'submitted': False,
+                'submitted_at': None
+            })
+
+    survey = {
+        'id': survey_id,
+        'title': title,
+        'description': data.get('description', ''),
+        'target_email': data.get('target_email', ''),
+        'questions': data.get('questions', []),
+        'people': people,
+        'responses': {},
+        'created_at': datetime.now().isoformat(),
+        'emailed': False,
+        'emailed_at': None,
+        'auto_email': data.get('auto_email', False),
+    }
+
+    save_ok = False
+    if _sb_available():
+        result = sb.save_survey(survey)
+        save_ok = result is not None
+    try:
+        local_data = {'surveys': {}}
+        if os.path.exists(DATA_FILE_SURVEYS):
+            with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                local_data = json.load(f)
+        local_data['surveys'][survey_id] = survey
+        with open(DATA_FILE_SURVEYS, 'w', encoding='utf-8') as f:
+            json.dump(local_data, f, ensure_ascii=False, indent=2)
+        save_ok = True
+    except Exception:
+        pass
+
+    if not save_ok:
+        return jsonify({'error': '保存失败'}), 500
+
+    share_url = request.host_url.rstrip('/') + f'/survey/{survey_id}'
+    return jsonify({
+        'success': True,
+        'survey_id': survey_id,
+        'share_url': share_url,
+        'title': title,
+        'people_count': len(people),
+    }), 201
+
+
+@app.route('/api/v1/surveys/<survey_id>', methods=['GET'])
+@api_key_required
+def api_v1_get_survey(survey_id):
+    """获取问卷详情"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return jsonify({'error': '问卷不存在'}), 404
+
+    people = survey.get('people', [])
+    responses = survey.get('responses', {})
+    share_url = request.host_url.rstrip('/') + f'/survey/{survey_id}'
+    return jsonify({
+        'id': survey['id'],
+        'title': survey.get('title', ''),
+        'description': survey.get('description', ''),
+        'questions': survey.get('questions', []),
+        'created_at': survey.get('created_at', ''),
+        'share_url': share_url,
+        'people': [
+            {
+                'id': p['id'],
+                'name': p['name'],
+                'submitted': p.get('submitted', False),
+                'submitted_at': p.get('submitted_at'),
+                'answers': responses.get(p['id'], {}),
+            }
+            for p in people
+        ],
+    })
+
+
+@app.route('/api/v1/surveys/<survey_id>', methods=['DELETE'])
+@api_key_required
+def api_v1_delete_survey(survey_id):
+    """删除问卷"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return jsonify({'error': '问卷不存在'}), 404
+
+    if _sb_available():
+        sb.delete_survey(survey_id)
+    try:
+        data = {'surveys': {}}
+        if os.path.exists(DATA_FILE_SURVEYS):
+            with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        if survey_id in data.get('surveys', {}):
+            del data['surveys'][survey_id]
+        with open(DATA_FILE_SURVEYS, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    return jsonify({'success': True, 'message': f'问卷 {survey_id} 已删除'})
+
+
+@app.route('/api/v1/surveys/<survey_id>/responses', methods=['GET'])
+@api_key_required
+def api_v1_get_survey_responses(survey_id):
+    """获取问卷所有回答"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return jsonify({'error': '问卷不存在'}), 404
+    return jsonify({
+        'survey_id': survey_id,
+        'title': survey.get('title', ''),
+        'questions': survey.get('questions', []),
+        'responses': survey.get('responses', {}),
+        'people': [
+            {'id': p['id'], 'name': p['name'], 'submitted': p.get('submitted', False)}
+            for p in survey.get('people', [])
+        ],
+    })
+
+
+@app.route('/admin/survey/<survey_id>/delete', methods=['DELETE'])
+@admin_required
+def admin_delete_survey(survey_id):
+    """管理员删除问卷"""
+    survey = get_survey(survey_id)
+    if not survey:
+        return jsonify({'error': '问卷不存在'}), 404
+
+    if _sb_available():
+        sb.delete_survey(survey_id)
+    try:
+        data = {'surveys': {}}
+        if os.path.exists(DATA_FILE_SURVEYS):
+            with open(DATA_FILE_SURVEYS, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        if survey_id in data.get('surveys', {}):
+            del data['surveys'][survey_id]
+        with open(DATA_FILE_SURVEYS, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    return jsonify({'success': True})
 
 
 # ── 错误处理 ──────────────────────────────────────────────────────────

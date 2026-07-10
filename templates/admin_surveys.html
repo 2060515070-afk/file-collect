@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}问卷收集 - FileCollect{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6 animate-fade-in-up">
+    <div class="flex items-center gap-3">
+        <a href="{{ url_for('admin_dashboard') }}" class="text-slate-400 hover:text-white transition-colors">← 返回</a>
+        <h1 class="text-2xl font-bold text-white">📋 问卷收集</h1>
+    </div>
+    <a href="{{ url_for('admin_create_survey') }}" class="btn-primary">✨ 创建问卷</a>
+</div>
+
+{% if surveys %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in-up delay-100">
+    {% for survey in surveys %}
+    {% set people = survey.get('people', []) %}
+    {% set responses = survey.get('responses', {}) %}
+    {% set total = people | length %}
+    {% set submitted = people | selectattr('submitted') | list | length %}
+    <div class="glass p-5 hover-glow transition-all">
+        <div class="flex items-start justify-between mb-3">
+            <h3 class="text-lg font-semibold text-white truncate flex-1">{{ survey.title }}</h3>
+            <span class="text-xs text-slate-500 shrink-0 ml-2">{{ survey.created_at[:10] if survey.created_at else '' }}</span>
+        </div>
+        {% if survey.description %}
+        <p class="text-sm text-slate-400 mb-3 line-clamp-2">{{ survey.description[:80] }}</p>
+        {% endif %}
+        <div class="flex items-center gap-4 mb-3 text-sm">
+            <div class="flex items-center gap-1">
+                <span>📊</span>
+                <span class="text-slate-400">题目 <strong class="text-white">{{ survey.get('questions', []) | length }}</strong></span>
+            </div>
+            <div class="flex items-center gap-1">
+                <span>👥</span>
+                <span class="text-slate-400">已提交 <strong class="text-green-400">{{ submitted }}/{{ total }}</strong></span>
+            </div>
+        </div>
+        {% if total > 0 %}
+        <div class="w-full bg-white/5 rounded-full h-1.5 mb-4">
+            <div class="h-1.5 rounded-full transition-all"
+                 style="width: {{ (submitted / total * 100) | round }}%; background: linear-gradient(90deg, #22c55e, #14b8a6);"></div>
+        </div>
+        {% endif %}
+        <div class="flex gap-2">
+            <a href="{{ url_for('admin_survey_detail', survey_id=survey.id) }}" class="btn-ghost flex-1 text-center text-sm py-2">查看结果</a>
+            <button onclick="copySurveyLink('{{ survey.id }}')" class="btn-ghost px-3 py-2 text-sm" title="复制链接">🔗</button>
+            <button onclick="deleteSurvey('{{ survey.id }}', '{{ survey.title }}')" class="btn-ghost px-3 py-2 text-sm text-red-400 hover:text-red-300" title="删除">🗑️</button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="glass p-12 text-center animate-fade-in-up delay-100">
+    <div class="text-5xl mb-4">📋</div>
+    <h2 class="text-xl font-semibold text-white mb-2">暂无问卷</h2>
+    <p class="text-slate-400 mb-6">创建一个问卷，让同学们在线填写回答</p>
+    <a href="{{ url_for('admin_create_survey') }}" class="btn-primary px-8 py-3">✨ 创建第一个问卷</a>
+</div>
+{% endif %}
+
+<!-- 删除确认弹窗 -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-box">
+        <div class="modal-icon">⚠️</div>
+        <div class="modal-title">确认删除</div>
+        <div class="modal-desc" id="deleteDesc">确定要删除此问卷吗？</div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeDeleteModal()">取消</button>
+            <button class="modal-btn modal-btn-confirm" id="confirmDeleteBtn" onclick="confirmDelete()">确认删除</button>
+        </div>
+    </div>
+</div>
+
+<!-- 复制成功提示 -->
+<div class="modal-overlay" id="copyModal">
+    <div class="modal-box">
+        <div class="modal-icon">✅</div>
+        <div class="modal-title">链接已复制</div>
+        <div class="modal-desc">将链接发送给同学们即可填写问卷</div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="document.getElementById('copyModal').classList.remove('active')">关闭</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let deleteTargetId = null;
+
+function copySurveyLink(surveyId) {
+    const url = window.location.origin + '/survey/' + surveyId;
+    navigator.clipboard.writeText(url).then(() => {
+        document.getElementById('copyModal').classList.add('active');
+    }).catch(() => {
+        const input = document.createElement('input');
+        input.value = url;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        document.getElementById('copyModal').classList.add('active');
+    });
+}
+
+function deleteSurvey(id, title) {
+    deleteTargetId = id;
+    document.getElementById('deleteDesc').innerHTML = `确定要删除「<strong>${title}</strong>」吗？<br><span class="text-red-400">此操作不可恢复。</span>`;
+    document.getElementById('deleteModal').classList.add('active');
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('active');
+    deleteTargetId = null;
+}
+
+function confirmDelete() {
+    if (!deleteTargetId) return;
+    const btn = document.getElementById('confirmDeleteBtn');
+    btn.disabled = true;
+    btn.textContent = '删除中...';
+    fetch(`/admin/survey/${deleteTargetId}/delete`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert(data.error || '删除失败');
+        })
+        .catch(() => alert('删除失败'))
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = '确认删除';
+            closeDeleteModal();
+        });
+}
+</script>
+{% endblock %}

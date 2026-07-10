@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}{{ survey.title }} - 问卷填写{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="glass-strong p-6 sm:p-8 animate-fade-in-up">
+        <!-- 标题 -->
+        <div class="text-center mb-6">
+            <div class="text-4xl mb-3">📋</div>
+            <h1 class="text-2xl font-bold text-white">{{ survey.title }}</h1>
+            {% if survey.description %}
+            <p class="text-slate-400 text-sm mt-2">{{ survey.description }}</p>
+            {% endif %}
+        </div>
+
+        <!-- 填写表单 -->
+        <form id="surveyForm" onsubmit="handleSubmit(event)">
+            <!-- 姓名选择（复用文件收集的模式） -->
+            <div class="mb-6">
+                <label class="block text-sm text-slate-400 mb-2">👤 选择您的姓名 <span class="text-red-400">*</span></label>
+                <div id="selectedTag" class="hidden mb-2">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium" style="background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(59,130,246,0.25));border:1px solid rgba(124,58,237,0.4);">
+                        <span id="selectedName"></span>
+                        <button type="button" onclick="clearPerson()" class="ml-1 text-slate-400 hover:text-white transition-colors">✕</button>
+                    </span>
+                </div>
+                <div id="searchWrap" class="relative">
+                    <div class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">🔍</div>
+                    <input type="text" id="personSearch" placeholder="输入姓名搜索..."
+                           class="w-full pl-10 pr-4 py-3 rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all"
+                           style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);"
+                           onfocus="this.style.borderColor='rgba(124,58,237,0.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,0.15)'"
+                           onblur="this.style.borderColor='rgba(255,255,255,0.1)';this.style.boxShadow='none'"
+                           oninput="filterPeople(this.value)">
+                </div>
+                <div id="peopleList" class="mt-2 max-h-48 overflow-y-auto rounded-xl" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);">
+                    {% for person in survey.people %}
+                        {% if not person.submitted %}
+                        <div class="person-item flex items-center gap-3 px-4 py-3 cursor-pointer transition-all"
+                             data-id="{{ person.id }}" data-name="{{ person.name }}"
+                             onclick="selectPerson('{{ person.id }}', '{{ person.name }}')"
+                             onmouseenter="this.style.background='rgba(124,58,237,0.12)'"
+                             onmouseleave="this.style.background='transparent'">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style="background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(59,130,246,0.3));">
+                                {{ person.name[0] }}
+                            </div>
+                            <span class="text-sm text-slate-300">{{ person.name }}</span>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                    <div id="noResult" class="hidden px-4 py-3 text-sm text-slate-500 text-center">😅 没有找到匹配的人</div>
+                </div>
+                <select id="personSelect" class="hidden" required>
+                    <option value="">--</option>
+                    {% for person in survey.people %}
+                        {% if not person.submitted %}
+                        <option value="{{ person.id }}">{{ person.name }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                {% set available = survey.people | rejectattr('submitted') | list | length %}
+                {% if available == 0 %}
+                <p class="text-xs text-orange-400 mt-2">⚠️ 所有人都已提交</p>
+                {% endif %}
+            </div>
+
+            <!-- 问题列表 -->
+            <div id="questionsContainer" class="space-y-5 mb-6">
+                {% for q in survey.questions %}
+                <div class="glass p-4" data-qid="{{ q.id }}" data-type="{{ q.type }}" data-required="{{ 'true' if q.required else 'false' }}">
+                    <label class="block text-sm text-white font-medium mb-3">
+                        {{ q.label }}
+                        {% if q.required %}<span class="text-red-400">*</span>{% endif %}
+                    </label>
+
+                    {% if q.type == 'text' %}
+                        <input type="text" class="q-answer input-field" data-qid="{{ q.id }}" placeholder="请输入...">
+
+                    {% elif q.type == 'textarea' %}
+                        <textarea class="q-answer input-field" data-qid="{{ q.id }}" rows="3" placeholder="请输入..."></textarea>
+
+                    {% elif q.type == 'number' %}
+                        <input type="number" class="q-answer input-field" data-qid="{{ q.id }}" placeholder="请输入数字...">
+
+                    {% elif q.type == 'date' %}
+                        <input type="date" class="q-answer input-field" data-qid="{{ q.id }}">
+
+                    {% elif q.type == 'radio' %}
+                        <div class="space-y-2">
+                            {% for opt in q.options %}
+                            <label class="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-white/[0.04]"
+                                   style="border:1px solid rgba(255,255,255,0.06);">
+                                <input type="radio" name="q_{{ q.id }}" value="{{ opt }}" class="q-answer" data-qid="{{ q.id }}">
+                                <span class="text-sm text-slate-300">{{ opt }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                    {% elif q.type == 'checkbox' %}
+                        <div class="space-y-2">
+                            {% for opt in q.options %}
+                            <label class="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-white/[0.04]"
+                                   style="border:1px solid rgba(255,255,255,0.06);">
+                                <input type="checkbox" name="q_{{ q.id }}" value="{{ opt }}" class="q-checkbox" data-qid="{{ q.id }}">
+                                <span class="text-sm text-slate-300">{{ opt }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                    {% elif q.type == 'select' %}
+                        <select class="q-answer input-field" data-qid="{{ q.id }}">
+                            <option value="">-- 请选择 --</option>
+                            {% for opt in q.options %}
+                            <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+
+                    {% elif q.type == 'rating' %}
+                        <div class="flex gap-2" data-qid="{{ q.id }}">
+                            {% for i in range(1, 6) %}
+                            <button type="button" class="rating-star text-3xl transition-all hover:scale-125" data-value="{{ i }}"
+                                    onclick="setRating('{{ q.id }}', {{ i }})"
+                                    style="filter: grayscale(1); opacity: 0.4;">⭐</button>
+                            {% endfor %}
+                            <input type="hidden" class="q-answer" data-qid="{{ q.id }}" value="">
+                        </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 提交按钮 -->
+            <button type="submit" class="btn-primary w-full py-3 text-base" id="submitBtn">
+                📤 提交问卷
+            </button>
+        </form>
+
+        <!-- 成功提示 -->
+        <div id="successMsg" class="hidden text-center py-8">
+            <div class="text-5xl mb-4 animate-bounce">🎉</div>
+            <h2 class="text-2xl font-bold text-white mb-2">提交成功！</h2>
+            <p class="text-slate-400">感谢您的回答</p>
+            <button onclick="location.reload()" class="btn-ghost mt-6">继续填写（其他人）</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedPersonId = null;
+
+// ── 人员选择（与 submit.html 一致）──
+function selectPerson(id, name) {
+    selectedPersonId = id;
+    document.getElementById('personSelect').value = id;
+    document.getElementById('selectedName').textContent = name;
+    document.getElementById('selectedTag').classList.remove('hidden');
+    document.getElementById('searchWrap').classList.add('hidden');
+    document.getElementById('peopleList').classList.add('hidden');
+}
+function clearPerson() {
+    selectedPersonId = null;
+    document.getElementById('personSelect').value = '';
+    document.getElementById('selectedTag').classList.add('hidden');
+    document.getElementById('searchWrap').classList.remove('hidden');
+    document.getElementById('peopleList').classList.remove('hidden');
+    document.getElementById('personSearch').value = '';
+    filterPeople('');
+}
+function filterPeople(query) {
+    const items = document.querySelectorAll('.person-item');
+    const q = query.toLowerCase().trim();
+    let visible = 0;
+    items.forEach(el => {
+        const name = el.dataset.name.toLowerCase();
+        const match = !q || name.includes(q);
+        el.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('noResult').classList.toggle('hidden', visible > 0);
+}
+
+// ── 评分 ──
+function setRating(qid, value) {
+    const container = document.querySelector(`[data-qid="${qid}"]`);
+    const stars = container.querySelectorAll('.rating-star');
+    const input = container.querySelector('.q-answer');
+    stars.forEach((star, i) => {
+        star.style.filter = i < value ? 'none' : 'grayscale(1)';
+        star.style.opacity = i < value ? '1' : '0.4';
+        star.style.transform = i < value ? 'scale(1.1)' : 'scale(1)';
+    });
+    input.value = value;
+}
+
+// ── 收集答案 ──
+function collectAnswers() {
+    const answers = {};
+    const questions = document.querySelectorAll('#questionsContainer > .glass');
+
+    questions.forEach(qDiv => {
+        const qid = qDiv.dataset.qid;
+        const type = qDiv.dataset.type;
+
+        if (type === 'checkbox') {
+            const checked = qDiv.querySelectorAll(`.q-checkbox[data-qid="${qid}"]:checked`);
+            answers[qid] = Array.from(checked).map(cb => cb.value);
+        } else if (type === 'radio') {
+            const checked = qDiv.querySelector(`input[name="q_${qid}"]:checked`);
+            answers[qid] = checked ? checked.value : '';
+        } else {
+            const el = qDiv.querySelector(`.q-answer[data-qid="${qid}"]`);
+            answers[qid] = el ? el.value : '';
+        }
+    });
+
+    return answers;
+}
+
+// ── 验证 ──
+function validate(answers) {
+    const questions = document.querySelectorAll('#questionsContainer > .glass');
+    for (const qDiv of questions) {
+        const qid = qDiv.dataset.qid;
+        const required = qDiv.dataset.required === 'true';
+        if (!required) continue;
+
+        const ans = answers[qid];
+        if (ans === undefined || ans === null || ans === '' || (Array.isArray(ans) && ans.length === 0)) {
+            const label = qDiv.querySelector('label').textContent.trim();
+            alert(`请回答必填题: ${label}`);
+            qDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return false;
+        }
+    }
+    return true;
+}
+
+// ── 提交 ──
+async function handleSubmit(e) {
+    e.preventDefault();
+    const personId = document.getElementById('personSelect').value;
+    if (!personId) { alert('请选择您的姓名'); return; }
+
+    const answers = collectAnswers();
+    if (!validate(answers)) return;
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ 提交中...';
+
+    try {
+        const resp = await fetch('/api/survey/{{ survey.id }}/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ person_id: personId, answers: answers })
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            document.getElementById('surveyForm').classList.add('hidden');
+            document.getElementById('successMsg').classList.remove('hidden');
+        } else {
+            alert(data.error || '提交失败');
+            btn.disabled = false;
+            btn.innerHTML = '📤 提交问卷';
+        }
+    } catch (err) {
+        alert('提交失败: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '📤 提交问卷';
+    }
+}
+</script>
+{% endblock %}

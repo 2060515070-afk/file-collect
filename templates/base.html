@@ -255,7 +255,8 @@
             <div class="flex items-center gap-2">
                 {% if not hide_admin_link | default(false) %}
                     {% if session.get('is_admin') %}
-                        <a href="{{ url_for('admin_dashboard') }}" class="nav-link">管理后台</a>
+                        <a href="{{ url_for('admin_dashboard') }}" class="nav-link">📦 文件收集</a>
+                        <a href="{{ url_for('admin_surveys') }}" class="nav-link">📋 问卷收集</a>
                         <a href="{{ url_for('admin_create') }}" class="nav-link">新建任务</a>
                         <a href="{{ url_for('admin_logout') }}" class="nav-link text-red-400 hover:text-red-300">退出</a>
                     {% else %}
