@@ -239,10 +239,49 @@
         @media (max-width: 640px) {
             .glass, .glass-strong { border-radius: 12px; }
         }
+
+        /* ── 顶部进度条 ── */
+        #nprogress {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
+            height: 3px; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s;
+        }
+        #nprogress.active { opacity: 1; }
+        #nprogress .bar {
+            height: 100%; width: 0;
+            background: linear-gradient(90deg, #7c3aed, #3b82f6, #06b6d4);
+            border-radius: 0 2px 2px 0;
+            box-shadow: 0 0 12px rgba(124,58,237,0.6), 0 0 4px rgba(59,130,246,0.4);
+            transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #nprogress .glow {
+            position: absolute; top: 0; right: 0; width: 80px; height: 3px;
+            background: linear-gradient(90deg, transparent, rgba(124,58,237,0.4), transparent);
+            filter: blur(4px);
+            animation: nprogress-glow 1.5s ease-in-out infinite;
+        }
+        @keyframes nprogress-glow {
+            0%, 100% { opacity: 0.5; } 50% { opacity: 1; }
+        }
+
+        /* ── 页面切换动画 ── */
+        @keyframes pageIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .page-transition-in {
+            animation: pageIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
     </style>
     {% block head %}{% endblock %}
 </head>
-<body>
+<body class="page-transition-in">
+    <!-- 顶部进度条 -->
+    <div id="nprogress">
+        <div class="bar"></div>
+        <div class="glow"></div>
+    </div>
+
     <div class="bg-glow"></div>
 
     <!-- 导航栏 -->
@@ -289,5 +328,73 @@
     </footer>
 
     {% block scripts %}{% endblock %}
-</body>
+
+    <!-- 全局进度条 + 页面切换 -->
+    <script>
+    (function() {
+        const np = document.getElementById('nprogress');
+        const bar = np ? np.querySelector('.bar') : null;
+        if (!np || !bar) return;
+
+        let progress = 0;
+        let timer = null;
+
+        function start() {
+            progress = 0;
+            bar.style.width = '0%';
+            np.classList.add('active');
+            // 模拟加载进度：快速到 70%，然后减速
+            clearTimeout(timer);
+            function tick() {
+                if (progress < 70) {
+                    progress += Math.random() * 15 + 5;
+                } else if (progress < 90) {
+                    progress += Math.random() * 3 + 1;
+                } else if (progress < 95) {
+                    progress += Math.random() * 0.5;
+                }
+                bar.style.width = Math.min(progress, 95) + '%';
+                timer = setTimeout(tick, 200 + Math.random() * 300);
+            }
+            tick();
+        }
+
+        function done() {
+            clearTimeout(timer);
+            bar.style.width = '100%';
+            setTimeout(() => {
+                np.classList.remove('active');
+                setTimeout(() => { bar.style.width = '0%'; }, 300);
+            }, 300);
+        }
+
+        // 监听所有导航链接点击
+        document.addEventListener('click', function(e) {
+            const link = e.target.closest('a[href]');
+            if (!link) return;
+            const href = link.getAttribute('href');
+            // 跳过锚点、新窗口、下载链接、JS链接
+            if (!href || href.startsWith('#') || href.startsWith('javascript:') ||
+                link.target === '_blank' || link.hasAttribute('download')) return;
+            // 跳过当前页面
+            if (href === window.location.pathname + window.location.search) return;
+            start();
+        });
+
+        // 监听表单提交（非 AJAX）
+        document.addEventListener('submit', function(e) {
+            // 只处理普通表单提交（非 fetch/XHR）
+            const form = e.target;
+            if (form.dataset.ajax === 'true') return;
+            if (form.querySelector('[type="submit"]:disabled')) return;
+            // 延迟一点，让表单验证先跑
+            setTimeout(() => { if (!e.defaultPrevented) start(); }, 100);
+        });
+
+        // 页面完全加载完成
+        window.addEventListener('load', done);
+        // 兜底：如果 load 事件已经触发过
+        if (document.readyState === 'complete') done();
+    })();
+    </script>
 </html>
