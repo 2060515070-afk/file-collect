@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}问卷收集 - FileCollect{% endblock %}
+{% block content %}
+<div style="text-align:center;padding:60px 16px 40px;" class="animate-fade-in-up">
+    <h1 style="font-size:clamp(28px,5vw,48px);font-weight:800;background:linear-gradient(135deg,#f472b6,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:16px;">
+        问卷收集，从未如此轻松
+    </h1>
+    <p style="color:#94a3b8;font-size:clamp(14px,2.5vw,18px);max-width:620px;margin:0 auto 40px;line-height:1.7;">
+        创建问卷 → 分享链接 → 同学选择姓名并填写回答 → 全部提交后一键导出 Excel / Word / PDF
+    </p>
+    <a href="/admin/login" class="btn-primary" style="display:inline-block;font-size:16px;padding:14px 36px;text-decoration:none;">
+        🚀 创建问卷
+    </a>
+</div>
+
+<!-- 功能卡片 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-top:20px;">
+    <div class="glass hover-glow" style="padding:28px 20px;text-align:center;">
+        <div style="font-size:36px;margin-bottom:12px;">❓</div>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:8px;">多种题型</h3>
+        <p style="color:#94a3b8;font-size:13px;">文本、单选、多选、下拉、数字、日期、评分…自由组合</p>
+    </div>
+    <div class="glass hover-glow" style="padding:28px 20px;text-align:center;">
+        <div style="font-size:36px;margin-bottom:12px;">👤</div>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:8px;">姓名归属</h3>
+        <p style="color:#94a3b8;font-size:13px;">每人从名单中选择姓名，回答自动归属到个人</p>
+    </div>
+    <div class="glass hover-glow" style="padding:28px 20px;text-align:center;">
+        <div style="font-size:36px;margin-bottom:12px;">🔗</div>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:8px;">一键分享</h3>
+        <p style="color:#94a3b8;font-size:13px;">复制链接发到群里，手机电脑都能填写</p>
+    </div>
+    <div class="glass hover-glow" style="padding:28px 20px;text-align:center;">
+        <div style="font-size:36px;margin-bottom:12px;">📊</div>
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:8px;">实时统计</h3>
+        <p style="color:#94a3b8;font-size:13px;">按人查看、按题查看，提交进度一目了然</p>
+    </div>
+</div>
+
+<!-- 使用流程 -->
+<div class="glass" style="margin-top:40px;padding:40px 24px;text-align:center;">
+    <h2 style="font-size:22px;font-weight:700;margin-bottom:32px;">三步搞定</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:32px;">
+        <div>
+            <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(59,130,246,0.3));display:inline-flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;">1️⃣</div>
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:6px;">创建问卷</h3>
+            <p style="color:#94a3b8;font-size:13px;">设定问题、导入同学名单</p>
+        </div>
+        <div>
+            <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,rgba(59,130,246,0.3),rgba(6,182,212,0.3));display:inline-flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;">2️⃣</div>
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:6px;">分享填写</h3>
+            <p style="color:#94a3b8;font-size:13px;">同学打开链接选姓名、答问题</p>
+        </div>
+        <div>
+            <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,rgba(6,182,212,0.3),rgba(34,197,94,0.3));display:inline-flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;">3️⃣</div>
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:6px;">导出数据</h3>
+            <p style="color:#94a3b8;font-size:13px;">一键导出 Excel / Word / PDF</p>
+        </div>
+    </div>
+</div>
+
+<!-- 支持的题型 -->
+<div class="glass" style="margin-top:40px;padding:40px 24px;text-align:center;">
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:20px;">支持的题型</h2>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:16px;">
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#a78bfa;">✏️ 单行文本</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#60a5fa;">📝 多行文本</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#f472b6;">🔘 单选题</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#4ade80;">☑️ 多选题</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#fbbf24;">📋 下拉选择</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#2dd4bf;">🔢 数字</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#fb923c;">📅 日期</span>
+        <span class="answer-tag" style="padding:8px 18px;border-radius:20px;font-size:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#facc15;">⭐ 评分</span>
+    </div>
+</div>
+
+<!-- 底部跳转 -->
+<div style="margin-top:48px;text-align:center;padding-bottom:20px;" class="animate-fade-in-up delay-200">
+    <p style="color:#64748b;font-size:14px;margin-bottom:16px;">也有文件需要收集？</p>
+    <a href="/" class="btn-ghost" style="display:inline-block;text-decoration:none;">📦 文件收集站</a>
+</div>
+{% endblock %}

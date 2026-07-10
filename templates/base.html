@@ -299,6 +299,7 @@
                         <a href="{{ url_for('admin_create') }}" class="nav-link">新建任务</a>
                         <a href="{{ url_for('admin_logout') }}" class="nav-link text-red-400 hover:text-red-300">退出</a>
                     {% else %}
+                        <a href="{{ url_for('survey_index') }}" class="nav-link">📋 问卷收集</a>
                         <a href="{{ url_for('admin_login') }}" class="nav-link">管理员登录</a>
                     {% endif %}
                 {% endif %}

@@ -376,6 +376,12 @@ def index():
     return render_template('index.html', file_types=FILE_TYPES)
 
 
+@app.route('/surveys')
+def survey_index():
+    """问卷收集主页"""
+    return render_template('survey_index.html')
+
+
 @app.route('/api/file-types')
 def api_file_types():
     return jsonify(FILE_TYPES)
