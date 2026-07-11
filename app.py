@@ -94,9 +94,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 @app.after_request
 def add_no_cache_headers(response):
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
+    # API 端点：不缓存
+    if request.path.startswith('/api/') or request.path.startswith('/admin/api/'):
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    else:
+        # HTML 页面：允许短暂缓存（支持预加载）
+        response.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
     return response
 
 # ── 文件类型配置 ──────────────────────────────────────────────────────

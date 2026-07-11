@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
+    <!-- 允许浏览器缓存预加载的页面 -->
     <title>{% block title %}FileCollect 文件收集站{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -273,6 +271,11 @@
             animation: pageIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
     </style>
+    <!-- 鼠标悬停预加载：hover 65ms 后自动 prefetch 目标页，消除点击延迟 -->
+    <script src="//instant.page/5.2.0" type="module" integrity="sha384-H1Mj3sELiA77WK4hEOLuzxxoCCoxnqg2GK4kGRICnKpLf8U1GMFKh0R2FhVO3c+"></script>
+    <!-- 预热常用页面（消除冷启动） -->
+    <link rel="prefetch" href="/admin/login">
+    <link rel="prefetch" href="/surveys">
     {% block head %}{% endblock %}
 </head>
 <body class="page-transition-in">
