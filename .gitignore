@@ -4,3 +4,6 @@ uploads/
 data.json
 .env
 *.db
+check_*.py
+test_*.py
+reset_*.py
