@@ -304,141 +304,47 @@ async function handleSubmit(e) {
     const statusText = document.getElementById('uploadStatus');
 
     try {
-        // 第一步：获取上传路径信息
-        statusText.textContent = '正在准备上传...';
-        const filesMeta = selectedFiles.map(f => ({ name: f.name, size: f.size, type: f.type }));
-        const urlResp = await fetch('/api/get-upload-url/{{ collection.id }}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ person_id: personId, files: filesMeta })
-        });
-        const urlData = await urlResp.json();
-        if (!urlData.success) { throw new Error(urlData.error || '准备上传失败'); }
-
-        // 第二步：上传文件（大文件用 TUS 分片续传，小文件直接上传）
-        const uploadedFiles = [];
+        // 服务端中转上传：浏览器只与本域通信，避免直连 supabase.co 被墙
+        statusText.textContent = '正在上传...';
         const totalSize = selectedFiles.reduce((s, f) => s + f.size, 0);
-        let uploadedSize = 0;
-        const TUS_THRESHOLD = 20 * 1024 * 1024; // 20MB 以上走 TUS
+        const fd = new FormData();
+        fd.append('person_id', personId);
+        selectedFiles.forEach(f => fd.append('files', f, f.name));
 
-        for (let i = 0; i < selectedFiles.length; i++) {
-            const file = selectedFiles[i];
-            const uploadInfo = urlData.uploads[i];
-
-            if (file.size > TUS_THRESHOLD) {
-                // ── 大文件：TUS 分片续传 ──
-                await new Promise((resolve, reject) => {
-                    const upload = new tus.Upload(file, {
-                        endpoint: '{{ supabase_url }}/storage/v1/upload/resumable',
-                        retryDelays: [0, 3000, 5000, 10000],
-                        chunkSize: 6 * 1024 * 1024, // 6MB 每片
-                        metadata: {
-                            bucketName: 'file-collect',
-                            objectName: uploadInfo.storage_path,
-                            contentType: file.type || 'application/octet-stream',
-                        },
-                        headers: {
-                            authorization: 'Bearer {{ supabase_anon }}',
-                            apikey: '{{ supabase_anon }}',
-                        },
-                        onError: function(err) {
-                            reject(new Error(`文件 ${file.name} 上传失败: ${err.message}`));
-                        },
-                        onProgress: function(bytesUploaded, bytesTotal) {
-                            const currentUploaded = uploadedSize + bytesUploaded;
-                            const pct = Math.min(Math.round(currentUploaded / totalSize * 100), 99);
-                            fill.style.width = pct + '%';
-                            const chunkInfo = ` [${formatBytes(bytesUploaded)}/${formatBytes(bytesTotal)}]`;
-                            statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}${chunkInfo}`;
-                            progressText.textContent = `${pct}% (${formatBytes(currentUploaded)} / ${formatBytes(totalSize)})`;
-                        },
-                        onSuccess: function() {
-                            uploadedSize += file.size;
-                            resolve();
-                        },
-                    });
-                    // 检查是否有之前未完成的上传
-                    upload.findPreviousUploads().then(function(previousUploads) {
-                        if (previousUploads.length) {
-                            upload.resumeFromPreviousUpload(previousUploads[0]);
-                        }
-                        upload.start();
-                    });
-                });
-            } else {
-                // ── 小文件：签名 URL 直传（比 Supabase SDK 快得多） ──
-                statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name}`;
-                if (uploadInfo.signed_url) {
-                    // 用签名 URL 直传，走浏览器原生 fetch
-                    await new Promise((resolve, reject) => {
-                        const xhr = new XMLHttpRequest();
-                        xhr.open('PUT', uploadInfo.signed_url, true);
-                        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-                        xhr.upload.onprogress = function(e) {
-                            if (e.lengthComputable) {
-                                const currentUploaded = uploadedSize + e.loaded;
-                                const pct = Math.min(Math.round(currentUploaded / totalSize * 100), 99);
-                                fill.style.width = pct + '%';
-                                statusText.textContent = `正在上传 (${i + 1}/${selectedFiles.length}): ${file.name} [${formatBytes(e.loaded)}/${formatBytes(e.total)}]`;
-                                progressText.textContent = `${pct}% (${formatBytes(currentUploaded)} / ${formatBytes(totalSize)})`;
-                            }
-                        };
-                        xhr.onload = function() {
-                            if (xhr.status >= 200 && xhr.status < 300) {
-                                uploadedSize += file.size;
-                                resolve();
-                            } else {
-                                reject(new Error(`文件 ${file.name} 上传失败 (${xhr.status})`));
-                            }
-                        };
-                        xhr.onerror = function() { reject(new Error(`文件 ${file.name} 网络错误`)); };
-                        xhr.send(file);
-                    });
-                } else {
-                    // 回退到 Supabase SDK
-                    const { error } = await _supabase.storage
-                        .from('file-collect')
-                        .upload(uploadInfo.storage_path, file, {
-                            contentType: file.type || 'application/octet-stream',
-                            upsert: false
-                        });
-                    if (error) {
-                        throw new Error(`文件 ${file.name} 上传失败: ${error.message}`);
-                    }
-                    uploadedSize += file.size;
-                }
-                const pct = Math.round(uploadedSize / totalSize * 100);
+        const respData = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/submit/{{ collection.id }}', true);
+            xhr.timeout = 600000;
+            xhr.upload.onprogress = function(ev) {
+                if (!ev.lengthComputable) return;
+                const pct = Math.min(Math.round(ev.loaded / ev.total * 100), 99);
                 fill.style.width = pct + '%';
-                progressText.textContent = `${pct}% (${formatBytes(uploadedSize)} / ${formatBytes(totalSize)})`;
-            }
-
-            uploadedFiles.push({
-                original_name: file.name,
-                safe_name: uploadInfo.safe_name,
-                storage_path: uploadInfo.storage_path,
-                size: file.size
-            });
-        }
-
-        // 第三步：确认上传
-        statusText.textContent = '服务器处理中...';
-        fill.style.width = '100%';
-
-        const confirmResp = await fetch('/api/confirm-upload/{{ collection.id }}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ person_id: personId, files: uploadedFiles })
+                statusText.textContent = `正在上传... [${formatBytes(ev.loaded)}/${formatBytes(ev.total)}]`;
+                progressText.textContent = `${pct}% (${formatBytes(ev.loaded)} / ${formatBytes(ev.total)})`;
+            };
+            xhr.onload = function() {
+                let data = {};
+                try { data = JSON.parse(xhr.responseText); } catch (e) {}
+                if (xhr.status >= 200 && xhr.status < 300) { resolve(data); }
+                else { reject(new Error(data.error || ('上传失败 (HTTP ' + xhr.status + ')'))); }
+            };
+            xhr.onerror = function() { reject(new Error('网络错误，请检查网络后重试')); };
+            xhr.ontimeout = function() { reject(new Error('上传超时，请重试')); };
+            xhr.send(fd);
         });
-        const confirmData = await confirmResp.json();
+
+        fill.style.width = '100%';
+        progressText.textContent = '100%';
+        statusText.textContent = '服务器处理中...';
 
         document.getElementById('uploadModal').classList.remove('active');
 
-        if (confirmData.success) {
+        if (respData.success) {
             document.getElementById('submitForm').classList.add('hidden');
             document.getElementById('farewellCard').innerHTML = getFarewell();
             document.getElementById('successMsg').classList.remove('hidden');
         } else {
-            alert(confirmData.error || '提交失败');
+            alert(respData.error || '提交失败');
             resetSubmitBtn();
         }
     } catch (err) {
